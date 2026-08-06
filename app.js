@@ -9,7 +9,7 @@ const firebaseConfig = {
   measurementId: "G-XV2NTV1MH7"
 };
 
-// Inizializzazione Firebase & Firestore
+// Inizializzazione Firebase
 firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
 const db = firebase.firestore();
@@ -18,12 +18,12 @@ let currentUserProfile = null;
 let isRegisterMode = false;
 let userBooks = [];
 let library3DInstance = null;
+let selectedAvatarIcon = '👤';
 
-// --- INIZIALIZZAZIONE ---
+// --- INIZIALIZZAZIONE APPLICAZIONE ---
 window.addEventListener('DOMContentLoaded', () => {
   initTheme();
   
-  // Ascolta lo stato dell'autenticazione in tempo reale
   auth.onAuthStateChanged(async (user) => {
     if (user) {
       await fetchProfile(user.uid);
@@ -31,10 +31,6 @@ window.addEventListener('DOMContentLoaded', () => {
       showAuthScreen();
     }
   });
-
-  if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('/sw.js').catch(() => {});
-  }
 });
 
 async function fetchProfile(uid) {
@@ -51,22 +47,135 @@ async function fetchProfile(uid) {
 function showAuthScreen() {
   document.getElementById('auth-screen').style.display = 'block';
   document.getElementById('app-content').style.display = 'none';
-  document.getElementById('logout-btn').style.display = 'none';
-  document.getElementById('user-badge').textContent = '';
+  document.getElementById('user-menu-wrapper').style.display = 'none';
 }
 
 function showAppContent() {
   document.getElementById('auth-screen').style.display = 'none';
   document.getElementById('app-content').style.display = 'block';
-  document.getElementById('logout-btn').style.display = 'block';
-  document.getElementById('user-badge').textContent = `👤 @${currentUserProfile.username}`;
+  document.getElementById('user-menu-wrapper').style.display = 'block';
+  
+  document.getElementById('user-badge').textContent = `@${currentUserProfile.username}`;
+  document.getElementById('dropdown-user-email').textContent = currentUserProfile.email;
 
+  updateHeaderUserBadge();
   loadUserBooks();
+
   if (!library3DInstance) {
     library3DInstance = new InteractiveLibrary3D('canvas-3d-container');
   }
 }
 
+// --- MENU DROPDOWN & NAVIGAZIONE ---
+function toggleDropdown(e) {
+  e.stopPropagation();
+  document.getElementById('user-dropdown').classList.toggle('show');
+}
+
+window.addEventListener('click', () => {
+  const menu = document.getElementById('user-dropdown');
+  if (menu && menu.classList.contains('show')) menu.classList.remove('show');
+});
+
+function scrollToSection(elementId) {
+  const el = document.getElementById(elementId);
+  if (el) el.scrollIntoView({ behavior: 'smooth' });
+  document.getElementById('user-dropdown').classList.remove('show');
+}
+
+// --- GESTIONE ACCOUNT & AVATAR ---
+function openAccountModal() {
+  document.getElementById('user-dropdown').classList.remove('show');
+  
+  document.getElementById('profile-username').value = currentUserProfile.username || '';
+  document.getElementById('profile-email').value = currentUserProfile.email || '';
+  document.getElementById('profile-age').value = currentUserProfile.age || '';
+  document.getElementById('profile-favorite-genre').value = currentUserProfile.favoriteGenre || '';
+  document.getElementById('profile-favorite-author').value = currentUserProfile.favoriteAuthor || '';
+  document.getElementById('profile-bio').value = currentUserProfile.bio || '';
+  document.getElementById('profile-photo-url').value = currentUserProfile.photoUrl || '';
+
+  selectedAvatarIcon = currentUserProfile.avatarIcon || '👤';
+  updateAvatarPreview();
+
+  document.getElementById('account-modal').style.display = 'flex';
+}
+
+function closeAccountModal() {
+  document.getElementById('account-modal').style.display = 'none';
+}
+
+function selectAvatar(emoji) {
+  selectedAvatarIcon = emoji;
+  document.getElementById('profile-photo-url').value = '';
+  updateAvatarPreview();
+}
+
+function previewPhotoUrl(url) {
+  if (url.trim() !== '') selectedAvatarIcon = null;
+  updateAvatarPreview();
+}
+
+function updateAvatarPreview() {
+  const container = document.getElementById('profile-avatar-preview');
+  const photoUrl = document.getElementById('profile-photo-url').value.trim();
+
+  if (photoUrl) {
+    container.innerHTML = `<img src="${photoUrl}" style="width:100%; height:100%; object-fit:cover;" onError="this.onerror=null; this.parentElement.innerHTML='👤';">`;
+  } else {
+    container.innerHTML = selectedAvatarIcon || '👤';
+  }
+}
+
+function updateHeaderUserBadge() {
+  const avatarBadge = document.getElementById('user-avatar-badge');
+  if (currentUserProfile.photoUrl) {
+    avatarBadge.innerHTML = `<img src="${currentUserProfile.photoUrl}" style="width:24px; height:24px; border-radius:50%; object-fit:cover;">`;
+  } else {
+    avatarBadge.textContent = currentUserProfile.avatarIcon || '👤';
+  }
+}
+
+async function saveProfileChanges(e) {
+  e.preventDefault();
+  
+  const age = document.getElementById('profile-age').value;
+  const favoriteGenre = document.getElementById('profile-favorite-genre').value.trim();
+  const favoriteAuthor = document.getElementById('profile-favorite-author').value.trim();
+  const bio = document.getElementById('profile-bio').value.trim();
+  const photoUrl = document.getElementById('profile-photo-url').value.trim();
+
+  try {
+    const updatedData = {
+      age: age ? parseInt(age) : null,
+      favoriteGenre: favoriteGenre,
+      favoriteAuthor: favoriteAuthor,
+      bio: bio,
+      photoUrl: photoUrl,
+      avatarIcon: selectedAvatarIcon
+    };
+
+    await db.collection('profiles').doc(currentUserProfile.id).update(updatedData);
+    currentUserProfile = { ...currentUserProfile, ...updatedData };
+    
+    updateHeaderUserBadge();
+    alert("✅ Profilo aggiornato con successo!");
+    closeAccountModal();
+  } catch (error) {
+    alert("Errore durante il salvataggio: " + error.message);
+  }
+}
+
+async function sendPasswordResetFromAccount() {
+  try {
+    await auth.sendPasswordResetEmail(currentUserProfile.email);
+    alert(`📧 Abbiamo inviato un link di modifica password a: ${currentUserProfile.email}`);
+  } catch (error) {
+    alert("Errore: " + error.message);
+  }
+}
+
+// --- AUTHENTICATION (LOGIN & REGISTRAZIONE) ---
 function toggleAuthMode(e) {
   e.preventDefault();
   isRegisterMode = !isRegisterMode;
@@ -78,7 +187,6 @@ function toggleAuthMode(e) {
   document.getElementById('nickname-suggestions').innerHTML = '';
 }
 
-// --- GESTIONE LOGIN & REGISTRAZIONE ---
 async function handleAuth(e) {
   e.preventDefault();
   const email = document.getElementById('auth-email').value.trim();
@@ -91,34 +199,29 @@ async function handleAuth(e) {
       return;
     }
 
-    // 1. Verifica univocità Nickname su Firestore
     const usernameQuery = await db.collection('profiles').where('username', '==', username).get();
-    
     if (!usernameQuery.empty) {
       generateNicknameSuggestions(username);
       return;
     }
 
     try {
-      // 2. Registrazione utente Firebase
       const userCredential = await auth.createUserWithEmailAndPassword(email, password);
       const user = userCredential.user;
 
-      // 3. Salva il profilo nel database
       await db.collection('profiles').doc(user.uid).set({
         id: user.uid,
         username: username,
         email: email,
+        avatarIcon: '📚',
         createdAt: firebase.firestore.FieldValue.serverTimestamp()
       });
 
-      alert("🎉 Registrazione completata con successo!");
+      alert("🎉 Account creato con successo!");
     } catch (error) {
       alert("Errore registrazione: " + error.message);
     }
-
   } else {
-    // LOGIN
     try {
       await auth.signInWithEmailAndPassword(email, password);
     } catch (error) {
@@ -127,21 +230,18 @@ async function handleAuth(e) {
   }
 }
 
-// --- SUGGERIMENTO NICKNAME SE OCCUPATO ---
 function generateNicknameSuggestions(baseName) {
   const suggestionsBox = document.getElementById('nickname-suggestions');
   const randNum = Math.floor(100 + Math.random() * 900);
   
   const alt1 = `${baseName}_${randNum}`;
   const alt2 = `${baseName}Book`;
-  const alt3 = `Real_${baseName}`;
 
   suggestionsBox.innerHTML = `
-    ⚠️ Il nickname <strong>"${baseName}"</strong> è già preso.<br>
-    Prova uno di questi disponibili:<br>
-    👉 <a href="#" onclick="applySuggestion('${alt1}')" style="color:var(--accent-lilac);">${alt1}</a> | 
-    <a href="#" onclick="applySuggestion('${alt2}')" style="color:var(--accent-lilac);">${alt2}</a> | 
-    <a href="#" onclick="applySuggestion('${alt3}')" style="color:var(--accent-lilac);">${alt3}</a>
+    ⚠️ Il nickname <strong>"${baseName}"</strong> è occupato.<br>
+    Disponibili: 
+    <a href="#" onclick="applySuggestion('${alt1}')" style="color:var(--accent-lilac);">${alt1}</a> | 
+    <a href="#" onclick="applySuggestion('${alt2}')" style="color:var(--accent-lilac);">${alt2}</a>
   `;
 }
 
@@ -150,11 +250,11 @@ function applySuggestion(suggestedName) {
   document.getElementById('nickname-suggestions').innerHTML = '✅ Nickname selezionato!';
 }
 
-// --- RECUPERO PASSWORD VIA EMAIL ---
 function showForgotPasswordModal(e) {
   e.preventDefault();
   document.getElementById('forgot-modal').style.display = 'flex';
 }
+
 function closeForgotPasswordModal() {
   document.getElementById('forgot-modal').style.display = 'none';
 }
@@ -165,24 +265,22 @@ async function sendPasswordReset() {
     alert("Inserisci un'email valida.");
     return;
   }
-
   try {
     await auth.sendPasswordResetEmail(email);
-    alert("📧 Link di ripristino inviato! Controlla la tua casella di posta.");
+    alert("📧 Link di ripristino inviato!");
     closeForgotPasswordModal();
   } catch (error) {
     alert("Errore: " + error.message);
   }
 }
 
-// --- LOGOUT ---
 async function logout() {
   await auth.signOut();
   currentUserProfile = null;
   showAuthScreen();
 }
 
-// --- GESTIONE LIBRI & LIBRERIA 3D ---
+// --- LIBRI & LIBRERIA 3D ---
 function loadUserBooks() {
   const saved = localStorage.getItem(`books_${currentUserProfile.id}`);
   userBooks = saved ? JSON.parse(saved) : [];
@@ -258,6 +356,7 @@ function sendChatMessage() {
   input.value = '';
 }
 
+// LIBRERIA 3D (THREE.JS)
 class InteractiveLibrary3D {
   constructor(containerId) {
     this.container = document.getElementById(containerId);

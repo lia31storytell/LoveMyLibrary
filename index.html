@@ -10,24 +10,60 @@
   <!-- Librerie 3D -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 
-  <!-- LIBRERIE FIREBASE COMPATIBILI (FONDAMENTALI!) -->
+  <!-- LIBRERIE FIREBASE COMPATIBILI -->
   <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
 </head>
 <body>
 
+  <!-- HEADER E NAVBAR PRINCIPALE -->
   <header>
-    <div class="logo">✨ LoveMyLibrary</div>
-    <div style="display: flex; gap: 10px; align-items: center;">
-      <button id="pwa-install-btn" class="btn-pink" style="display: none;">📱 Installa App</button>
-      <button id="theme-toggle" class="btn-primary">☀️ Chiaro</button>
-      <span id="user-badge" style="font-weight: bold; color: var(--accent-lilac);"></span>
-      <button id="logout-btn" class="btn-primary" style="display: none;" onclick="logout()">Esci</button>
+    <div class="logo">📚 LoveMyLibrary</div>
+
+    <!-- Menu Utente (Visibile solo a utente connesso) -->
+    <div class="user-menu-container" id="user-menu-wrapper" style="display: none;">
+      <button class="user-profile-btn" onclick="toggleDropdown(event)">
+        <span id="user-avatar-badge" style="font-size: 1.2rem; display: flex; align-items: center;">👤</span>
+        <span id="user-badge">@username</span>
+        <small>▾</small>
+      </button>
+
+      <div class="dropdown-menu" id="user-dropdown">
+        <div class="dropdown-header">
+          Connesso come <br><strong id="dropdown-user-email" style="color: var(--text-primary);">mail@example.com</strong>
+        </div>
+
+        <button class="dropdown-item" onclick="openAccountModal()">
+          ⚙️ Il mio Account & Profilo
+        </button>
+
+        <button class="dropdown-item" onclick="scrollToSection('add-book-form')">
+          ➕ Aggiungi Libro
+        </button>
+
+        <button class="dropdown-item" onclick="scrollToSection('canvas-3d-container')">
+          🏛️ Libreria 3D
+        </button>
+
+        <button class="dropdown-item" onclick="scrollToSection('chat-messages-box')">
+          💬 Chat Community
+        </button>
+
+        <button class="dropdown-item" id="theme-toggle">
+          🌙 Cambia Tema
+        </button>
+
+        <div style="border-top: 1px solid var(--border-color); margin: 4px 0;"></div>
+
+        <button class="dropdown-item danger" onclick="logout()">
+          🚪 Esci (Logout)
+        </button>
+      </div>
     </div>
   </header>
 
-  <!-- SCHERMATA DI AUTENTICAZIONE -->
+  <!-- SCHERMATA DI LOGIN / REGISTRAZIONE -->
   <div id="auth-screen" style="max-width: 450px; margin: 3rem auto; padding: 1rem;">
     <div class="card">
       <h2 id="auth-title" style="text-align: center;">🔐 Accedi a LoveMyLibrary</h2>
@@ -61,7 +97,7 @@
     </div>
   </div>
 
-  <!-- MODALE RECUPERO PASSWORD -->
+  <!-- MODALE RECUPERO PASSWORD (LOGIN) -->
   <div id="forgot-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.7); z-index: 1000; justify-content: center; align-items: center;">
     <div class="card" style="width: 90%; max-width: 400px; background: var(--bg-surface);">
       <h3>🔑 Recupero Password</h3>
@@ -74,20 +110,109 @@
     </div>
   </div>
 
-  <!-- CONTENUTO PRINCIPALE -->
+  <!-- MODALE GESTIONE ACCOUNT & PROFILO -->
+  <div id="account-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.7); z-index: 2000; justify-content: center; align-items: center; padding: 1rem;">
+    <div class="card" style="width: 100%; max-width: 520px; background: var(--bg-surface); max-height: 90vh; overflow-y: auto;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+        <h3>⚙️ Gestione Account & Profilo</h3>
+        <button onclick="closeAccountModal()" style="background: none; border: none; font-size: 1.5rem; color: var(--text-primary); cursor: pointer;">✕</button>
+      </div>
+
+      <!-- Anteprima Avatar / Foto -->
+      <div style="text-align: center; margin-bottom: 1.2rem;">
+        <div id="profile-avatar-preview" style="width: 90px; height: 90px; border-radius: 50%; background: var(--bg-primary); margin: 0 auto 0.5rem auto; display: flex; align-items: center; justify-content: center; font-size: 3rem; border: 3px solid var(--accent-pink); overflow: hidden;">
+          👤
+        </div>
+        <small style="color: var(--text-secondary);">Scegli una Memoji/Emoji o inserisci l'URL di una tua foto</small>
+        
+        <!-- Selezione Rapida Memoji / Emoji -->
+        <div style="display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; margin-top: 0.8rem;">
+          <button type="button" onclick="selectAvatar('📚')" class="btn-avatar-option">📚</button>
+          <button type="button" onclick="selectAvatar('🐱')" class="btn-avatar-option">🐱</button>
+          <button type="button" onclick="selectAvatar('🦊')" class="btn-avatar-option">🦊</button>
+          <button type="button" onclick="selectAvatar('☕')" class="btn-avatar-option">☕</button>
+          <button type="button" onclick="selectAvatar('✨')" class="btn-avatar-option">✨</button>
+          <button type="button" onclick="selectAvatar('👑')" class="btn-avatar-option">👑</button>
+          <button type="button" onclick="selectAvatar('🎧')" class="btn-avatar-option">🎧</button>
+          <button type="button" onclick="selectAvatar('🐉')" class="btn-avatar-option">🐉</button>
+          <button type="button" onclick="selectAvatar('🧙‍♀️')" class="btn-avatar-option">🧙‍♀️</button>
+          <button type="button" onclick="selectAvatar('🧛‍♂️')" class="btn-avatar-option">🧛‍♂️</button>
+          <button type="button" onclick="selectAvatar('🧚‍♀️')" class="btn-avatar-option">🧚‍♀️</button>
+          <button type="button" onclick="selectAvatar('🦄')" class="btn-avatar-option">🦄</button>
+        </div>
+      </div>
+
+      <!-- Form Dati Personali Utente -->
+      <form id="profile-form" onsubmit="saveProfileChanges(event)">
+        <div style="margin-bottom: 1rem;">
+          <label>URL Foto Personalizzata (Opzionale)</label>
+          <input type="text" id="profile-photo-url" placeholder="https://link-tua-foto.jpg" oninput="previewPhotoUrl(this.value)">
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 1rem;">
+          <div>
+            <label>Nickname (Unico)</label>
+            <input type="text" id="profile-username" disabled style="opacity: 0.7; cursor: not-allowed;">
+          </div>
+          <div>
+            <label>Email Utente</label>
+            <input type="email" id="profile-email" disabled style="opacity: 0.7; cursor: not-allowed;">
+          </div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 1rem;">
+          <div>
+            <label>Età</label>
+            <input type="number" id="profile-age" placeholder="Es. 23" min="10" max="120">
+          </div>
+          <div>
+            <label>Genere Preferito</label>
+            <input type="text" id="profile-favorite-genre" placeholder="Es. Romance, Fantasy...">
+          </div>
+        </div>
+
+        <div style="margin-bottom: 1rem;">
+          <label>Autore Preferito</label>
+          <input type="text" id="profile-favorite-author" placeholder="Es. Colleen Hoover, J.K. Rowling...">
+        </div>
+
+        <div style="margin-bottom: 1.2rem;">
+          <label>Biografia / Citazione</label>
+          <textarea id="profile-bio" rows="2" placeholder="Racconta qualcosa di te o la tua citazione preferita..."></textarea>
+        </div>
+
+        <button type="submit" class="btn-pink" style="width: 100%; padding: 0.8rem; font-weight: bold;">
+          💾 Salva Modifiche Profilo
+        </button>
+      </form>
+
+      <hr style="border: 0; border-top: 1px solid var(--border-color); margin: 1.2rem 0;">
+
+      <!-- Sezione Sicurezza Password -->
+      <h4>🔒 Sicurezza & Password</h4>
+      <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 0.8rem;">
+        Vuoi aggiornare la password di accesso? Riceverai un'email con le istruzioni.
+      </p>
+      <button class="btn-primary" style="width: 100%;" onclick="sendPasswordResetFromAccount()">
+        📧 Richiedi Cambio Password
+      </button>
+    </div>
+  </div>
+
+  <!-- CONTENUTO APPLICAZIONE -->
   <main id="app-content" style="display: none; max-width: 1100px; margin: 1.5rem auto; padding: 0 1rem;">
     
-    <section class="card">
-      <h2>➕ Aggiungi un Libro alla Biblioteca Cloud</h2>
+    <section class="card" id="add-book-section">
+      <h2>➕ Aggiungi un Libro alla tua Biblioteca</h2>
       <form id="add-book-form" onsubmit="submitNewBook(event)">
         <div class="form-grid">
           <div>
             <label>Titolo *</label>
-            <input type="text" id="book-title" required placeholder="Es. Il Nome della Rosa">
+            <input type="text" id="book-title" required placeholder="Es. Orgoglio e Pregiudizio">
           </div>
           <div>
             <label>Autore *</label>
-            <input type="text" id="book-author" required placeholder="Es. Umberto Eco">
+            <input type="text" id="book-author" required placeholder="Es. Jane Austen">
           </div>
           <div>
             <label>Valutazione</label>
