@@ -1,12 +1,11 @@
-// --- CONFIGURAZIONE FIREBASE ---
+// CONFIGURAZIONE FIREBASE
 const firebaseConfig = {
   apiKey: "AIzaSyAfrBgWzeOxwfFhPt-X8nd1TRfFnomsJcU",
   authDomain: "lovemylibrary-96b76.firebaseapp.com",
   projectId: "lovemylibrary-96b76",
   storageBucket: "lovemylibrary-96b76.firebasestorage.app",
   messagingSenderId: "1016435693298",
-  appId: "1:1016435693298:web:eca54c8af796f6a99ce26b",
-  measurementId: "G-XV2NTV1MH7"
+  appId: "1:1016435693298:web:eca54c8af796f6a99ce26b"
 };
 
 firebase.initializeApp(firebaseConfig);
@@ -20,11 +19,11 @@ let library3DInstance = null;
 let activeDMUserId = null;
 let dmUnsubscribe = null;
 
-// --- INIZIALIZZAZIONE RECAPTCHA PER SMS ---
+// INIZIALIZZAZIONE
 window.addEventListener('DOMContentLoaded', () => {
   initTheme();
   
-  // Inizializza reCAPTCHA invisibile per la verifica SMS
+  // Recaptcha invisibile per Phone Auth
   window.recaptchaVerifier = new firebase.auth.RecaptchaVerifier('recaptcha-container', {
     'size': 'invisible'
   });
@@ -49,49 +48,74 @@ async function fetchProfile(uid) {
   }
 }
 
-// --- 1. REGISTRAZIONE & VERIFICA EMAIL ALLA REGISTRAZIONE ---
+// 1. GESTIONE AUTENTICAZIONE (EMAIL + NICKNAME)
 async function handleAuth(e) {
   e.preventDefault();
-  const email = document.getElementById('auth-email').value.trim();
+  const identifier = document.getElementById('auth-identifier').value.trim();
   const password = document.getElementById('auth-password').value.trim();
-  const username = document.getElementById('auth-username').value.trim();
 
   if (isRegisterMode) {
-    if (!username) return alert("Inserisci un Nickname!");
+    const signupEmail = document.getElementById('auth-signup-email').value.trim();
+    const username = identifier;
 
-    const usernameQuery = await db.collection('profiles').where('username', '==', username).get();
+    if (!username || !signupEmail) return alert("Inserisci sia Nickname che Email!");
+
+    // Controlla se il nickname è unico
+    const usernameQuery = await db.collection('profiles')
+      .where('username_lowercase', '==', username.toLowerCase()).get();
+
     if (!usernameQuery.empty) {
-      alert("Nickname occupato! Scegline un altro.");
+      alert("⚠️ Nickname già occupato! Scegline un altro.");
       return;
     }
 
     try {
-      const userCredential = await auth.createUserWithEmailAndPassword(email, password);
+      const userCredential = await auth.createUserWithEmailAndPassword(signupEmail, password);
       const user = userCredential.user;
 
-      // Invia la mail di verifica indirizzo email
       auth.useDeviceLanguage();
       await user.sendEmailVerification();
 
+      // Salva profilo con nickname sia normale che minuscolo (per il login)
       await db.collection('profiles').doc(user.uid).set({
         id: user.uid,
         username: username,
-        email: email,
-        avatarIcon: '📚',
-        followers: [],
-        following: [],
+        username_lowercase: username.toLowerCase(),
+        email: signupEmail,
         createdAt: firebase.firestore.FieldValue.serverTimestamp()
       });
 
-      alert("🎉 Account creato con successo! Ti abbiamo inviato una mail per verificare il tuo indirizzo email.");
+      alert("🎉 Account creato! Ti abbiamo inviato un'email di verifica.");
     } catch (error) {
       alert("Errore registrazione: " + error.message);
     }
+
   } else {
+    // LOGIN (Con Email o con Nickname)
+    let emailToUse = identifier;
+
+    // Se l'utente ha inserito un Nickname invece dell'email (assenza della '@')
+    if (!identifier.includes('@')) {
+      try {
+        const querySnapshot = await db.collection('profiles')
+          .where('username_lowercase', '==', identifier.toLowerCase()).get();
+
+        if (querySnapshot.empty) {
+          alert("❌ Nessun utente trovato con questo nickname.");
+          return;
+        }
+
+        emailToUse = querySnapshot.docs[0].data().email;
+      } catch (err) {
+        alert("Errore durante il recupero del nickname: " + err.message);
+        return;
+      }
+    }
+
     try {
-      await auth.signInWithEmailAndPassword(email, password);
+      await auth.signInWithEmailAndPassword(emailToUse, password);
     } catch (error) {
-      alert("Credenziali non valide: " + error.message);
+      alert("Credenziali errate: " + error.message);
     }
   }
 }
@@ -109,25 +133,32 @@ async function resendVerificationEmail() {
     try {
       auth.useDeviceLanguage();
       await user.sendEmailVerification();
-      alert("📧 Mail di verifica inviata nuovamente!");
+      alert("📧 Mail di verifica reinviata!");
     } catch (error) {
-      alert("Errore: " + error.message);
+      alert("Errore invio: " + error.message);
     }
   }
 }
 
-// --- 2. REIMPOSTAZIONE PASSWORD ---
+// 2. REIMPOSTAZIONE PASSWORD
 async function sendPasswordReset() {
-  const email = document.getElementById('reset-email-input').value.trim();
-  if (!email) return alert("Inserisci un'email valida.");
-  
+  const input = document.getElementById('reset-email-input').value.trim();
+  if (!input) return alert("Inserisci un'email o un nickname.");
+
+  let targetEmail = input;
+  if (!input.includes('@')) {
+    const q = await db.collection('profiles').where('username_lowercase', '==', input.toLowerCase()).get();
+    if (q.empty) return alert("Nickname non trovato.");
+    targetEmail = q.docs[0].data().email;
+  }
+
   try {
     auth.useDeviceLanguage();
-    await auth.sendPasswordResetEmail(email);
-    alert(`📧 Mail di reset inviata a: ${email}. Controlla la tua posta (anche in Spam)!`);
+    await auth.sendPasswordResetEmail(targetEmail);
+    alert(`📧 Mail per reimpostare la password inviata a: ${targetEmail}`);
     closeForgotPasswordModal();
   } catch (error) {
-    alert("Errore reset password: " + error.message);
+    alert("Errore reset: " + error.message);
   }
 }
 
@@ -138,11 +169,11 @@ async function sendPasswordResetFromAccount() {
     await auth.sendPasswordResetEmail(currentUserProfile.email);
     alert(`📧 Mail di reset inviata a: ${currentUserProfile.email}`);
   } catch (error) {
-    alert("Errore reset password: " + error.message);
+    alert("Errore reset: " + error.message);
   }
 }
 
-// --- 3. MODIFICA INDIRIZZO EMAIL UTENTE ---
+// 3. CAMBIO EMAIL
 async function requestEmailChange() {
   const newEmail = document.getElementById('new-email-input').value.trim();
   const user = auth.currentUser;
@@ -151,27 +182,24 @@ async function requestEmailChange() {
   try {
     auth.useDeviceLanguage();
     await user.verifyBeforeUpdateEmail(newEmail);
-    alert(`📩 Abbiamo inviato un link di conferma a ${newEmail}. L'indirizzo si aggiornerà non appena avrai fatto clic sul link!`);
+    
+    // Aggiorna anche il record su Firestore
+    await db.collection('profiles').doc(user.uid).update({ email: newEmail });
+    alert(`📩 Inviato link di conferma alla nuova email: ${newEmail}`);
   } catch (error) {
-    if (error.code === 'auth/requires-recent-login') {
-      alert("⚠️ Per sicurezza, disconnettiti ed effettua nuovamente il Login prima di cambiare la tua email.");
-    } else {
-      alert("Errore cambio email: " + error.message);
-    }
+    alert("Errore aggiornamento email: " + error.message);
   }
 }
 
-// --- 4. VERIFICA TRAMITE SMS (PHONE AUTH) ---
+// 4. VERIFICA SMS (PHONE AUTH)
 async function sendSMSCode() {
   const phoneNumber = document.getElementById('phone-number-input').value.trim();
-  if (!phoneNumber) return alert("Inserisci un numero con prefisso internazionale (es. +393401234567)");
-
-  const appVerifier = window.recaptchaVerifier;
+  if (!phoneNumber) return alert("Inserisci il numero con prefisso internazionale (+39...)");
 
   try {
-    const confirmationResult = await auth.signInWithPhoneNumber(phoneNumber, appVerifier);
+    const confirmationResult = await auth.signInWithPhoneNumber(phoneNumber, window.recaptchaVerifier);
     window.confirmationResult = confirmationResult;
-    alert("📲 SMS inviato al tuo numero! Inserisci il codice a 6 cifre per confermare.");
+    alert("📲 SMS inviato! Inserisci il codice a 6 cifre.");
   } catch (error) {
     alert("Errore invio SMS: " + error.message);
   }
@@ -179,17 +207,17 @@ async function sendSMSCode() {
 
 async function confirmSMSCode() {
   const code = document.getElementById('sms-code-input').value.trim();
-  if (!code || !window.confirmationResult) return alert("Invia prima l'SMS e inserisci il codice ricevuto.");
+  if (!code || !window.confirmationResult) return alert("Fai prima clic su Invia SMS.");
 
   try {
     const result = await window.confirmationResult.confirm(code);
-    alert("✅ Numero di telefono verificato con successo: " + result.user.phoneNumber);
+    alert("✅ Numero di telefono verificato: " + result.user.phoneNumber);
   } catch (error) {
-    alert("❌ Codice SMS errato o scaduto: " + error.message);
+    alert("❌ Codice SMS errato: " + error.message);
   }
 }
 
-// --- VISUALIZZAZIONE SCHERMATE & UI ---
+// UI HELPERS
 function showAuthScreen() {
   document.getElementById('auth-screen').style.display = 'block';
   document.getElementById('app-content').style.display = 'none';
@@ -228,7 +256,6 @@ function openAccountModal() {
   document.getElementById('profile-username').value = currentUserProfile.username || '';
   document.getElementById('profile-age').value = currentUserProfile.age || '';
   document.getElementById('profile-bio').value = currentUserProfile.bio || '';
-  document.getElementById('profile-photo-url').value = currentUserProfile.photoUrl || '';
   document.getElementById('account-modal').style.display = 'flex';
 }
 
@@ -240,22 +267,20 @@ async function saveProfileChanges(e) {
   e.preventDefault();
   const age = document.getElementById('profile-age').value;
   const bio = document.getElementById('profile-bio').value.trim();
-  const photoUrl = document.getElementById('profile-photo-url').value.trim();
 
   try {
     await db.collection('profiles').doc(currentUserProfile.id).update({
       age: age ? parseInt(age) : null,
-      bio: bio,
-      photoUrl: photoUrl
+      bio: bio
     });
     alert("✅ Profilo aggiornato!");
     closeAccountModal();
   } catch (error) {
-    alert("Errore salvataggio: " + error.message);
+    alert("Errore: " + error.message);
   }
 }
 
-// --- GESTIONE CHAT (DM + COMMUNITY) ---
+// CHAT DM
 function openChatZone() {
   document.getElementById('user-dropdown').classList.remove('show');
   const chatZone = document.getElementById('chat-zone-section');
@@ -265,25 +290,6 @@ function openChatZone() {
 
 function closeChatZone() {
   document.getElementById('chat-zone-section').style.display = 'none';
-}
-
-function switchChatTab(tabName) {
-  const privateContent = document.getElementById('chat-tab-content-private');
-  const communityContent = document.getElementById('chat-tab-content-community');
-  const btnPrivate = document.getElementById('tab-btn-private');
-  const btnCommunity = document.getElementById('tab-btn-community');
-
-  if (tabName === 'private') {
-    privateContent.style.display = 'block';
-    communityContent.style.display = 'none';
-    btnPrivate.classList.add('active');
-    btnCommunity.classList.remove('active');
-  } else {
-    privateContent.style.display = 'none';
-    communityContent.style.display = 'block';
-    btnPrivate.classList.remove('active');
-    btnCommunity.classList.add('active');
-  }
 }
 
 async function loadPrivateChatUsers() {
@@ -297,19 +303,18 @@ async function loadPrivateChatUsers() {
     const u = doc.data();
     if (u.id !== currentUserProfile.id) {
       html += `
-        <div class="dm-user-item" id="dm-user-item-${u.id}" onclick="openPrivateChatWith('${u.id}', '${u.username}')">
+        <div class="dm-user-item" onclick="openPrivateChatWith('${u.id}', '${u.username}')">
           <strong>@${u.username}</strong>
         </div>
       `;
     }
   });
 
-  container.innerHTML = html || '<p style="color:var(--text-secondary); padding:1rem;">Nessun utente.</p>';
+  container.innerHTML = html || '<p style="padding:1rem;">Nessun utente.</p>';
 }
 
 function openPrivateChatWith(targetUserId, targetUsername) {
   openChatZone();
-  switchChatTab('private');
   activeDMUserId = targetUserId;
   document.getElementById('dm-input-text').disabled = false;
   document.getElementById('dm-send-btn').disabled = false;
@@ -355,27 +360,17 @@ async function sendPrivateMessage() {
   input.value = '';
 }
 
-function sendChatMessage() {
-  const input = document.getElementById('chat-input-text');
-  const text = input.value.trim();
-  if (!text) return;
-
-  const box = document.getElementById('chat-messages-box');
-  const msg = document.createElement('div');
-  msg.style = 'margin-bottom: 6px; padding: 6px; background: var(--bg-surface); border-radius: 6px; font-size: 0.9rem; border: 1px solid var(--border-color);';
-  msg.innerHTML = `<strong style="color: var(--accent-pink);">@${currentUserProfile.username}:</strong> ${text}`;
-  box.appendChild(msg);
-  box.scrollTop = box.scrollHeight;
-  input.value = '';
-}
-
-// --- ALTRE UTILITÀ ---
 function toggleAuthMode(e) {
   e.preventDefault();
   isRegisterMode = !isRegisterMode;
+
   document.getElementById('auth-title').textContent = isRegisterMode ? '📝 Registrati a LoveMyLibrary' : '🔐 Accedi a LoveMyLibrary';
   document.getElementById('auth-submit-btn').textContent = isRegisterMode ? 'Crea Account' : 'Accedi';
-  document.getElementById('username-field-group').style.display = isRegisterMode ? 'block' : 'none';
+  document.getElementById('auth-toggle-link').textContent = isRegisterMode ? 'Hai già un account? Accedi' : 'Non hai un account? Registrati';
+  
+  document.getElementById('auth-identifier-label').textContent = isRegisterMode ? 'Nickname Unico *' : 'Email o Nickname *';
+  document.getElementById('auth-identifier').placeholder = isRegisterMode ? 'Scegli un nickname' : 'Email o nickname';
+  document.getElementById('signup-email-group').style.display = isRegisterMode ? 'block' : 'none';
 }
 
 function showForgotPasswordModal(e) {
@@ -403,11 +398,8 @@ function submitNewBook(e) {
   e.preventDefault();
   const title = document.getElementById('book-title').value.trim();
   const author = document.getElementById('book-author').value.trim();
-  const rating = document.getElementById('book-rating').value;
-  const spicy = document.getElementById('book-spicy').value;
-  const cover = document.getElementById('book-cover-url').value.trim();
 
-  userBooks.push({ id: Date.now(), title, author, rating, spicy, cover: cover || 'https://images.unsplash.com/photo-1543002588-bfa74002ed7e?w=300' });
+  userBooks.push({ id: Date.now(), title, author });
   localStorage.setItem(`books_${currentUserProfile.id}`, JSON.stringify(userBooks));
   document.getElementById('add-book-form').reset();
   renderBooksList();
@@ -425,7 +417,6 @@ function renderBooksList() {
 
   container.innerHTML = userBooks.map(b => `
     <div class="card" style="padding: 1rem; text-align: center; margin-bottom: 0;">
-      <img src="${b.cover}" style="height: 110px; object-fit: cover; border-radius: 6px; margin-bottom: 0.5rem;">
       <h4 style="margin: 0.2rem 0;">${b.title}</h4>
       <small style="color: var(--text-secondary);">${b.author}</small>
     </div>
