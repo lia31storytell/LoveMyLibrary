@@ -1,0 +1,21 @@
+{
+  "short_name": "LoveMyLibrary",
+  "name": "LoveMyLibrary - Community & E-Books",
+  "icons": [
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/29/29302.png",
+      "type": "image/png",
+      "sizes": "192x192"
+    },
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/29/29302.png",
+      "type": "image/png",
+      "sizes": "512x512"
+    }
+  ],
+  "start_url": "/",
+  "background_color": "#09090B",
+  "theme_color": "#C084FC",
+  "display": "standalone",
+  "orientation": "portrait"
+}

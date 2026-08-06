@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="it" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LoveMyLibrary</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="stylesheet" href="styles.css">
+
+  <!-- Three.js (3D), ePUB.js (Lettore Ebook) e Supabase (DB & Realtime Chat) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/epub.js/0.3.88/epub.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+
+  <header>
+    <div class="logo">LoveMyLibrary</div>
+    <div style="display: flex; gap: 10px;">
+      <button id="theme-toggle" class="btn-primary">🌙 Notturno</button>
+      <button id="user-btn" class="btn-pink">👤 Accedi</button>
+    </div>
+  </header>
+
+  <main style="max-width: 1100px; margin: 1.5rem auto; padding: 0 1rem;">
+    
+    <!-- 1. RICERCA GENERALE (Google Books & Vercel API) -->
+    <section class="card">
+      <h2>🔍 Cerca Libri o Account Utenti</h2>
+      <div style="display: flex; gap: 10px;">
+        <input type="text" id="global-search-input" placeholder="Cerca titolo, autore, ISBN o username utente...">
+        <button class="btn-primary" onclick="handleGlobalSearch()">Cerca</button>
+      </div>
+      <div id="search-results-container" style="margin-top: 1rem;"></div>
+    </section>
+
+    <!-- 2. AGGIUNTA LIBRO ED E-BOOK -->
+    <section class="card">
+      <h2>➕ Aggiungi Libro o E-Book alla Biblioteca</h2>
+      <form id="add-book-form" onsubmit="submitNewBook(event)">
+        <div class="form-grid">
+          <div>
+            <label>Titolo *</label>
+            <input type="text" id="book-title" required placeholder="Es. Il Nome della Rosa">
+          </div>
+          <div>
+            <label>Autore *</label>
+            <input type="text" id="book-author" required placeholder="Es. Umberto Eco">
+          </div>
+          <div>
+            <label>ISBN</label>
+            <input type="text" id="book-isbn" placeholder="978-8804668220">
+          </div>
+          <div>
+            <label>Prezzo (€)</label>
+            <input type="number" id="book-price" step="0.01" placeholder="15.00">
+          </div>
+          <div>
+            <label>Pagine</label>
+            <input type="number" id="book-pages" placeholder="500">
+          </div>
+          <div>
+            <label>Anno Pubblicazione</label>
+            <input type="number" id="book-year" placeholder="1980">
+          </div>
+          <div>
+            <label>Valutazione (Stelle)</label>
+            <select id="book-rating">
+              <option value="1">⭐</option>
+              <option value="2">⭐⭐</option>
+              <option value="3">⭐⭐⭐</option>
+              <option value="4">⭐⭐⭐⭐</option>
+              <option value="5" selected>⭐⭐⭐⭐⭐</option>
+            </select>
+          </div>
+          <div>
+            <label>Livello Spicy (Peperoncini)</label>
+            <select id="book-spicy">
+              <option value="0">Nessuno</option>
+              <option value="1">🌶️</option>
+              <option value="2">🌶️🌶️</option>
+              <option value="3">🌶️🌶️🌶️</option>
+              <option value="4">🌶️🌶️🌶️🌶️</option>
+              <option value="5">🌶️🌶️🌶️🌶️🌶️</option>
+            </select>
+          </div>
+        </div>
+
+        <div style="margin-top: 1rem;">
+          <label>Trama</label>
+          <textarea id="book-synopsis" rows="3" placeholder="Scrivi la trama qui..."></textarea>
+        </div>
+
+        <div class="form-grid" style="margin-top: 1rem;">
+          <div>
+            <label>URL Copertina o PDF/JPG</label>
+            <input type="text" id="book-cover-url" placeholder="https://link-copertina.jpg">
+          </div>
+          <div>
+            <label>URL E-Book (Link file .epub per lettura online)</label>
+            <input type="text" id="book-epub-url" placeholder="https://link-ebook.epub">
+          </div>
+        </div>
+
+        <button type="submit" class="btn-pink" style="width: 100%; margin-top: 1rem; padding: 0.8rem;">
+          🚀 Pubblica nella Biblioteca Cloud
+        </button>
+      </form>
+    </section>
+
+    <!-- 3. LIBRERIA 3D INTERATTIVA -->
+    <section class="card">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+        <h2>📚 La Tua Libreria 3D</h2>
+        <button class="btn-primary" onclick="library3DInstance.addShelf()">+ Aggiungi Scaffale</button>
+      </div>
+      <p style="font-size: 0.9rem; color: var(--text-secondary);">
+        💡 Fai drag & drop per spostare i libri. Clicca su un libro per aprirne la chat specifica o il lettore.
+      </p>
+      <div id="canvas-3d-container"></div>
+    </section>
+
+    <!-- 4. CHAT COMMUNITY / LIBRO / GRUPPI / DM -->
+    <section class="card">
+      <div style="display: flex; justify-content: space-between; align-items: center;">
+        <h2 id="current-chat-title">💬 Chat Community Generale</h2>
+        <div>
+          <button class="btn-primary" onclick="switchChatRoom('global', 'Community Generale')">Generale</button>
+          <button class="btn-pink" onclick="createGroupModal()">+ Nuovo Gruppo</button>
+        </div>
+      </div>
+
+      <div style="margin: 0.5rem 0; display: flex; gap: 10px; align-items: center;">
+        <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
+          <input type="checkbox" id="anon-check" style="width: auto;" onchange="toggleAnonMode(this)"> Invia in anonimo
+        </label>
+        <span id="sender-display" style="font-size: 0.9rem; font-weight: bold;">(Nome: UtenteDemo)</span>
+      </div>
+
+      <div id="chat-messages-box" style="height: 250px; border: 1px solid var(--border-color); overflow-y: auto; padding: 1rem; border-radius: 8px; margin-bottom: 1rem; background-color: var(--bg-surface);">
+        <p><em>Benvenuto nella chat di LoveMyLibrary!</em></p>
+      </div>
+
+      <div style="display: flex; gap: 10px;">
+        <input type="text" id="chat-input-text" placeholder="Scrivi un messaggio...">
+        <button class="btn-primary" onclick="sendChatMessage()">Invia</button>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- MODALE LETTORE E-BOOK -->
+  <div id="ebook-reader-modal" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:var(--bg-primary); z-index:1000; flex-direction:column;">
+    <div style="padding:1rem; background:var(--bg-surface); display:flex; justify-content:space-between; align-items:center; border-bottom: 2px solid var(--accent-lilac);">
+      <h3 id="reader-title" style="margin:0;">Lettura E-Book</h3>
+      <div>
+        <button onclick="prevEbookPage()" class="btn-primary">◀️ Prec</button>
+        <button onclick="nextEbookPage()" class="btn-primary">Succ ▶️</button>
+        <button onclick="closeEbookReader()" style="background:#ef4444; color:white; border:none; padding:0.5rem 1rem; border-radius:8px; margin-left: 10px;">Chiudi</button>
+      </div>
+    </div>
+    <div id="viewer" style="flex:1; width:100%; height:100%;"></div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
