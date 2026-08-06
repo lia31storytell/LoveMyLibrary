@@ -1,102 +1,195 @@
-// --- STATO DELL'APPLICAZIONE ---
-let currentUser = localStorage.getItem('mylibrary_user') || null;
-let isRegisterMode = false;
-let userBooks = JSON.parse(localStorage.getItem('mylibrary_books') || '[]');
-let library3DInstance = null;
-let deferredPrompt = null;
+// --- CONFIGURAZIONE FIREBASE ---
+const firebaseConfig = {
+  apiKey: "AIzaSyAfrBgWzeOxwfFhPt-X8nd1TRfFnomsJcU",
+  authDomain: "lovemylibrary-96b76.firebaseapp.com",
+  projectId: "lovemylibrary-96b76",
+  storageBucket: "lovemylibrary-96b76.firebasestorage.app",
+  messagingSenderId: "1016435693298",
+  appId: "1:1016435693298:web:eca54c8af796f6a99ce26b",
+  measurementId: "G-XV2NTV1MH7"
+};
 
-// --- GESTIONE PWA (INSTALLAZIONE APP) ---
-window.addEventListener('beforeinstallprompt', (e) => {
-  e.preventDefault();
-  deferredPrompt = e;
-  const installBtn = document.getElementById('pwa-install-btn');
-  if (installBtn) {
-    installBtn.style.display = 'block';
-    installBtn.addEventListener('click', () => {
-      deferredPrompt.prompt();
-      deferredPrompt.userChoice.then(() => {
-        installBtn.style.display = 'none';
-        deferredPrompt = null;
-      });
-    });
-  }
-});
+// Inizializzazione Firebase & Firestore
+firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth();
+const db = firebase.firestore();
+
+let currentUserProfile = null;
+let isRegisterMode = false;
+let userBooks = [];
+let library3DInstance = null;
 
 // --- INIZIALIZZAZIONE ---
 window.addEventListener('DOMContentLoaded', () => {
   initTheme();
-  checkAuthState();
+  
+  // Ascolta lo stato dell'autenticazione in tempo reale
+  auth.onAuthStateChanged(async (user) => {
+    if (user) {
+      await fetchProfile(user.uid);
+    } else {
+      showAuthScreen();
+    }
+  });
 
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('/sw.js').catch(() => {});
   }
 });
 
-// --- TEMA CHIARO / SCURO ---
-function initTheme() {
-  const toggleBtn = document.getElementById('theme-toggle');
-  toggleBtn.addEventListener('click', () => {
-    const currentTheme = document.documentElement.getAttribute('data-theme');
-    const nextTheme = currentTheme === 'dark' ? 'light' : 'dark';
-    document.documentElement.setAttribute('data-theme', nextTheme);
-    toggleBtn.textContent = nextTheme === 'dark' ? '☀️ Chiaro' : '🌙 Notturno';
-  });
-}
-
-// --- AUTENTICAZIONE (LOGIN / REGISTRAZIONE) ---
-function toggleAuthMode(e) {
-  e.preventDefault();
-  isRegisterMode = !isRegisterMode;
-  document.getElementById('auth-title').textContent = isRegisterMode ? '📝 Registrati a LoveMyLibrary' : '🔐 Accedi a LoveMyLibrary';
-  document.getElementById('auth-submit-btn').textContent = isRegisterMode ? 'Registrati' : 'Accedi';
-  document.getElementById('auth-toggle-text').textContent = isRegisterMode ? 'Hai già un account?' : 'Non hai un account?';
-  document.getElementById('auth-toggle-link').textContent = isRegisterMode ? 'Accedi qui' : 'Registrati qui';
-}
-
-function handleAuth(e) {
-  e.preventDefault();
-  const username = document.getElementById('auth-username').value.trim();
-  if (!username) return;
-
-  currentUser = username;
-  localStorage.setItem('mylibrary_user', currentUser);
-  checkAuthState();
-}
-
-function logout() {
-  currentUser = null;
-  localStorage.removeItem('mylibrary_user');
-  checkAuthState();
-}
-
-function checkAuthState() {
-  const authScreen = document.getElementById('auth-screen');
-  const appContent = document.getElementById('app-content');
-  const userBadge = document.getElementById('user-badge');
-  const logoutBtn = document.getElementById('logout-btn');
-
-  if (currentUser) {
-    authScreen.style.display = 'none';
-    appContent.style.display = 'block';
-    userBadge.textContent = `👤 ${currentUser}`;
-    logoutBtn.style.display = 'block';
-
-    // Inizializza o aggiorna la Libreria 3D e i libri
-    renderBooksList();
-    if (!library3DInstance) {
-      library3DInstance = new InteractiveLibrary3D('canvas-3d-container');
-    } else {
-      library3DInstance.buildShelves();
-    }
+async function fetchProfile(uid) {
+  const doc = await db.collection('profiles').doc(uid).get();
+  if (doc.exists) {
+    currentUserProfile = doc.data();
+    showAppContent();
   } else {
-    authScreen.style.display = 'block';
-    appContent.style.display = 'none';
-    userBadge.textContent = '';
-    logoutBtn.style.display = 'none';
+    showAuthScreen();
   }
 }
 
-// --- GESTIONE LIBRI ---
+// --- VISUALIZZAZIONE SCHERMATE ---
+function showAuthScreen() {
+  document.getElementById('auth-screen').style.display = 'block';
+  document.getElementById('app-content').style.display = 'none';
+  document.getElementById('logout-btn').style.display = 'none';
+  document.getElementById('user-badge').textContent = '';
+}
+
+function showAppContent() {
+  document.getElementById('auth-screen').style.display = 'none';
+  document.getElementById('app-content').style.display = 'block';
+  document.getElementById('logout-btn').style.display = 'block';
+  document.getElementById('user-badge').textContent = `👤 @${currentUserProfile.username}`;
+
+  loadUserBooks();
+  if (!library3DInstance) {
+    library3DInstance = new InteractiveLibrary3D('canvas-3d-container');
+  }
+}
+
+function toggleAuthMode(e) {
+  e.preventDefault();
+  isRegisterMode = !isRegisterMode;
+  
+  document.getElementById('auth-title').textContent = isRegisterMode ? '📝 Registrati a LoveMyLibrary' : '🔐 Accedi a LoveMyLibrary';
+  document.getElementById('auth-submit-btn').textContent = isRegisterMode ? 'Crea Account' : 'Accedi';
+  document.getElementById('auth-toggle-link').textContent = isRegisterMode ? 'Hai già un account? Accedi' : 'Non hai un account? Registrati';
+  document.getElementById('username-field-group').style.display = isRegisterMode ? 'block' : 'none';
+  document.getElementById('nickname-suggestions').innerHTML = '';
+}
+
+// --- GESTIONE LOGIN & REGISTRAZIONE ---
+async function handleAuth(e) {
+  e.preventDefault();
+  const email = document.getElementById('auth-email').value.trim();
+  const password = document.getElementById('auth-password').value.trim();
+  const username = document.getElementById('auth-username').value.trim();
+
+  if (isRegisterMode) {
+    if (!username) {
+      alert("Inserisci un Nickname!");
+      return;
+    }
+
+    // 1. Verifica univocità Nickname su Firestore
+    const usernameQuery = await db.collection('profiles').where('username', '==', username).get();
+    
+    if (!usernameQuery.empty) {
+      generateNicknameSuggestions(username);
+      return;
+    }
+
+    try {
+      // 2. Registrazione utente Firebase
+      const userCredential = await auth.createUserWithEmailAndPassword(email, password);
+      const user = userCredential.user;
+
+      // 3. Salva il profilo nel database
+      await db.collection('profiles').doc(user.uid).set({
+        id: user.uid,
+        username: username,
+        email: email,
+        createdAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+
+      alert("🎉 Registrazione completata con successo!");
+    } catch (error) {
+      alert("Errore registrazione: " + error.message);
+    }
+
+  } else {
+    // LOGIN
+    try {
+      await auth.signInWithEmailAndPassword(email, password);
+    } catch (error) {
+      alert("Credenziali non valide: " + error.message);
+    }
+  }
+}
+
+// --- SUGGERIMENTO NICKNAME SE OCCUPATO ---
+function generateNicknameSuggestions(baseName) {
+  const suggestionsBox = document.getElementById('nickname-suggestions');
+  const randNum = Math.floor(100 + Math.random() * 900);
+  
+  const alt1 = `${baseName}_${randNum}`;
+  const alt2 = `${baseName}Book`;
+  const alt3 = `Real_${baseName}`;
+
+  suggestionsBox.innerHTML = `
+    ⚠️ Il nickname <strong>"${baseName}"</strong> è già preso.<br>
+    Prova uno di questi disponibili:<br>
+    👉 <a href="#" onclick="applySuggestion('${alt1}')" style="color:var(--accent-lilac);">${alt1}</a> | 
+    <a href="#" onclick="applySuggestion('${alt2}')" style="color:var(--accent-lilac);">${alt2}</a> | 
+    <a href="#" onclick="applySuggestion('${alt3}')" style="color:var(--accent-lilac);">${alt3}</a>
+  `;
+}
+
+function applySuggestion(suggestedName) {
+  document.getElementById('auth-username').value = suggestedName;
+  document.getElementById('nickname-suggestions').innerHTML = '✅ Nickname selezionato!';
+}
+
+// --- RECUPERO PASSWORD VIA EMAIL ---
+function showForgotPasswordModal(e) {
+  e.preventDefault();
+  document.getElementById('forgot-modal').style.display = 'flex';
+}
+function closeForgotPasswordModal() {
+  document.getElementById('forgot-modal').style.display = 'none';
+}
+
+async function sendPasswordReset() {
+  const email = document.getElementById('reset-email-input').value.trim();
+  if (!email) {
+    alert("Inserisci un'email valida.");
+    return;
+  }
+
+  try {
+    await auth.sendPasswordResetEmail(email);
+    alert("📧 Link di ripristino inviato! Controlla la tua casella di posta.");
+    closeForgotPasswordModal();
+  } catch (error) {
+    alert("Errore: " + error.message);
+  }
+}
+
+// --- LOGOUT ---
+async function logout() {
+  await auth.signOut();
+  currentUserProfile = null;
+  showAuthScreen();
+}
+
+// --- GESTIONE LIBRI & LIBRERIA 3D ---
+function loadUserBooks() {
+  const saved = localStorage.getItem(`books_${currentUserProfile.id}`);
+  userBooks = saved ? JSON.parse(saved) : [];
+  renderBooksList();
+  if (library3DInstance) library3DInstance.buildShelves();
+}
+
 function submitNewBook(e) {
   e.preventDefault();
   const title = document.getElementById('book-title').value.trim();
@@ -115,91 +208,42 @@ function submitNewBook(e) {
   };
 
   userBooks.push(newBook);
-  localStorage.setItem('mylibrary_books', JSON.stringify(userBooks));
+  localStorage.setItem(`books_${currentUserProfile.id}`, JSON.stringify(userBooks));
 
   document.getElementById('add-book-form').reset();
-  alert(`🎉 "${title}" salvato con successo!`);
-
   renderBooksList();
   if (library3DInstance) library3DInstance.buildShelves();
 }
 
 function renderBooksList() {
   const container = document.getElementById('my-books-list');
-  const countBadge = document.getElementById('books-count-badge');
-  countBadge.textContent = `${userBooks.length} Libri`;
+  document.getElementById('books-count-badge').textContent = `${userBooks.length} Libri`;
 
   if (userBooks.length === 0) {
-    container.innerHTML = '<p style="grid-column: 1/-1; color: var(--text-secondary);">Nessun libro salvato. Aggiungine uno usando il modulo sopra!</p>';
+    container.innerHTML = '<p style="grid-column: 1/-1; color: var(--text-secondary);">Nessun libro salvato.</p>';
     return;
   }
 
   container.innerHTML = userBooks.map(b => `
     <div class="card" style="padding: 1rem; text-align: center; margin-bottom: 0;">
-      <img src="${b.cover}" style="height: 120px; object-fit: cover; border-radius: 6px; margin-bottom: 0.5rem;" onError="this.src='https://images.unsplash.com/photo-1543002588-bfa74002ed7e?w=300'">
-      <h4 style="margin: 0.3rem 0; font-size: 1rem;">${b.title}</h4>
-      <small style="color: var(--text-secondary);">${b.author}</small><br>
-      <div style="margin-top: 0.5rem; font-size: 0.8rem;">
-        ${'⭐'.repeat(b.rating)} ${'🌶️'.repeat(b.spicy)}
-      </div>
-      <button class="btn-primary" style="margin-top: 0.5rem; width: 100%; font-size: 0.8rem;" onclick="deleteBook(${b.id})">Elimina</button>
+      <img src="${b.cover}" style="height: 110px; object-fit: cover; border-radius: 6px; margin-bottom: 0.5rem;" onError="this.src='https://images.unsplash.com/photo-1543002588-bfa74002ed7e?w=300'">
+      <h4 style="margin: 0.2rem 0;">${b.title}</h4>
+      <small style="color: var(--text-secondary);">${b.author}</small>
+      <div style="margin-top: 0.4rem; font-size: 0.8rem;">${'⭐'.repeat(b.rating)} ${'🌶️'.repeat(b.spicy)}</div>
     </div>
   `).join('');
 }
 
-function deleteBook(id) {
-  userBooks = userBooks.filter(b => b.id !== id);
-  localStorage.setItem('mylibrary_books', JSON.stringify(userBooks));
-  renderBooksList();
-  if (library3DInstance) library3DInstance.buildShelves();
+function initTheme() {
+  const toggleBtn = document.getElementById('theme-toggle');
+  toggleBtn.addEventListener('click', () => {
+    const currentTheme = document.documentElement.getAttribute('data-theme');
+    const nextTheme = currentTheme === 'dark' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', nextTheme);
+    toggleBtn.textContent = nextTheme === 'dark' ? '☀️ Chiaro' : '🌙 Notturno';
+  });
 }
 
-// --- RICERCA GOOGLE BOOKS ---
-async function handleGlobalSearch() {
-  const query = document.getElementById('global-search-input').value.trim();
-  const container = document.getElementById('search-results-container');
-  if (!query) return;
-
-  container.innerHTML = '<p>Ricerca in corso...</p>';
-
-  try {
-    const res = await fetch(`https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(query)}&maxResults=3`);
-    const data = await res.json();
-    
-    container.innerHTML = '';
-    if (data.items) {
-      data.items.forEach(item => {
-        const info = item.volumeInfo;
-        const title = (info.title || '').replace(/'/g, "\\'");
-        const author = info.authors ? info.authors[0].replace(/'/g, "\\'") : 'Sconosciuto';
-        const cover = info.imageLinks ? info.imageLinks.thumbnail : '';
-
-        container.innerHTML += `
-          <div style="padding: 8px; border: 1px solid var(--border-color); margin-bottom: 8px; border-radius: 8px; display: flex; gap: 10px; align-items: center;">
-            ${cover ? `<img src="${cover}" style="height:40px;">` : ''}
-            <div style="flex:1;">
-              <strong>${title}</strong><br><small>${author}</small>
-            </div>
-            <button class="btn-pink" onclick="autofill('${title}', '${author}', '${cover}')">Importa</button>
-          </div>
-        `;
-      });
-    } else {
-      container.innerHTML = '<p>Nessun libro trovato.</p>';
-    }
-  } catch(e) {
-    container.innerHTML = '<p>Errore durante la ricerca.</p>';
-  }
-}
-
-function autofill(title, author, cover) {
-  document.getElementById('book-title').value = title;
-  document.getElementById('book-author').value = author;
-  document.getElementById('book-cover-url').value = cover;
-  alert('Dati importati nel modulo!');
-}
-
-// --- CHAT ---
 function sendChatMessage() {
   const input = document.getElementById('chat-input-text');
   const text = input.value.trim();
@@ -208,13 +252,12 @@ function sendChatMessage() {
   const box = document.getElementById('chat-messages-box');
   const msg = document.createElement('div');
   msg.style = 'margin-bottom: 6px; padding: 6px; background: var(--bg-primary); border-radius: 6px; font-size: 0.9rem;';
-  msg.innerHTML = `<strong>${currentUser}:</strong> ${text}`;
+  msg.innerHTML = `<strong>@${currentUserProfile.username}:</strong> ${text}`;
   box.appendChild(msg);
   box.scrollTop = box.scrollHeight;
   input.value = '';
 }
 
-// --- LIBRERIA 3D REALE ---
 class InteractiveLibrary3D {
   constructor(containerId) {
     this.container = document.getElementById(containerId);
@@ -254,14 +297,12 @@ class InteractiveLibrary3D {
     const shelfMat = new THREE.MeshStandardMaterial({ color: 0x27272a });
     const shelfGeo = new THREE.BoxGeometry(5, 0.1, 1);
 
-    // Crea 2 scaffali
     [0, 2].forEach(y => {
       const shelf = new THREE.Mesh(shelfGeo, shelfMat);
       shelf.position.y = y;
       this.shelvesGroup.add(shelf);
     });
 
-    // Disegna 1 libro 3D per ogni libro reale inserito dall'utente!
     const colors = [0xc084fc, 0xf472b6, 0x38bdf8, 0x4ade80, 0xfacc15];
     userBooks.forEach((book, index) => {
       const bookGeo = new THREE.BoxGeometry(0.3, 0.9, 0.7);
