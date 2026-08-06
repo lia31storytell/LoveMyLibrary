@@ -1,26 +1,160 @@
-// Inizializzazione Supabase per Vercel
-const SUPABASE_URL = "https://xyzcompany.supabase.co"; // Sostituire con le proprie chiavi Supabase se abilitato
-const SUPABASE_KEY = "public-anon-key";
-let supabase = null;
+// --- STATO DELL'APPLICAZIONE ---
+let currentUser = localStorage.getItem('mylibrary_user') || null;
+let isRegisterMode = false;
+let userBooks = JSON.parse(localStorage.getItem('mylibrary_books') || '[]');
+let library3DInstance = null;
+let deferredPrompt = null;
 
-if (window.supabase) {
-  try { supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY); } catch(e){}
-}
-
-let activeRoom = 'global';
-let currentUser = 'Lettore_' + Math.floor(Math.random() * 1000);
-let currentRendition = null;
-let library3DInstance;
-
-// Toggle Tema Chiaro / Notturno
-document.getElementById('theme-toggle').addEventListener('click', () => {
-  const currentTheme = document.documentElement.getAttribute('data-theme');
-  const nextTheme = currentTheme === 'dark' ? 'light' : 'dark';
-  document.documentElement.setAttribute('data-theme', nextTheme);
-  document.getElementById('theme-toggle').textContent = nextTheme === 'dark' ? '☀️ Chiaro' : '🌙 Notturno';
+// --- GESTIONE PWA (INSTALLAZIONE APP) ---
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  deferredPrompt = e;
+  const installBtn = document.getElementById('pwa-install-btn');
+  if (installBtn) {
+    installBtn.style.display = 'block';
+    installBtn.addEventListener('click', () => {
+      deferredPrompt.prompt();
+      deferredPrompt.userChoice.then(() => {
+        installBtn.style.display = 'none';
+        deferredPrompt = null;
+      });
+    });
+  }
 });
 
-// 1. RICERCA GLOBALE (Google Books API + Vercel Serverless Function)
+// --- INIZIALIZZAZIONE ---
+window.addEventListener('DOMContentLoaded', () => {
+  initTheme();
+  checkAuthState();
+
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('/sw.js').catch(() => {});
+  }
+});
+
+// --- TEMA CHIARO / SCURO ---
+function initTheme() {
+  const toggleBtn = document.getElementById('theme-toggle');
+  toggleBtn.addEventListener('click', () => {
+    const currentTheme = document.documentElement.getAttribute('data-theme');
+    const nextTheme = currentTheme === 'dark' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', nextTheme);
+    toggleBtn.textContent = nextTheme === 'dark' ? '☀️ Chiaro' : '🌙 Notturno';
+  });
+}
+
+// --- AUTENTICAZIONE (LOGIN / REGISTRAZIONE) ---
+function toggleAuthMode(e) {
+  e.preventDefault();
+  isRegisterMode = !isRegisterMode;
+  document.getElementById('auth-title').textContent = isRegisterMode ? '📝 Registrati a LoveMyLibrary' : '🔐 Accedi a LoveMyLibrary';
+  document.getElementById('auth-submit-btn').textContent = isRegisterMode ? 'Registrati' : 'Accedi';
+  document.getElementById('auth-toggle-text').textContent = isRegisterMode ? 'Hai già un account?' : 'Non hai un account?';
+  document.getElementById('auth-toggle-link').textContent = isRegisterMode ? 'Accedi qui' : 'Registrati qui';
+}
+
+function handleAuth(e) {
+  e.preventDefault();
+  const username = document.getElementById('auth-username').value.trim();
+  if (!username) return;
+
+  currentUser = username;
+  localStorage.setItem('mylibrary_user', currentUser);
+  checkAuthState();
+}
+
+function logout() {
+  currentUser = null;
+  localStorage.removeItem('mylibrary_user');
+  checkAuthState();
+}
+
+function checkAuthState() {
+  const authScreen = document.getElementById('auth-screen');
+  const appContent = document.getElementById('app-content');
+  const userBadge = document.getElementById('user-badge');
+  const logoutBtn = document.getElementById('logout-btn');
+
+  if (currentUser) {
+    authScreen.style.display = 'none';
+    appContent.style.display = 'block';
+    userBadge.textContent = `👤 ${currentUser}`;
+    logoutBtn.style.display = 'block';
+
+    // Inizializza o aggiorna la Libreria 3D e i libri
+    renderBooksList();
+    if (!library3DInstance) {
+      library3DInstance = new InteractiveLibrary3D('canvas-3d-container');
+    } else {
+      library3DInstance.buildShelves();
+    }
+  } else {
+    authScreen.style.display = 'block';
+    appContent.style.display = 'none';
+    userBadge.textContent = '';
+    logoutBtn.style.display = 'none';
+  }
+}
+
+// --- GESTIONE LIBRI ---
+function submitNewBook(e) {
+  e.preventDefault();
+  const title = document.getElementById('book-title').value.trim();
+  const author = document.getElementById('book-author').value.trim();
+  const rating = document.getElementById('book-rating').value;
+  const spicy = document.getElementById('book-spicy').value;
+  const cover = document.getElementById('book-cover-url').value.trim();
+
+  const newBook = {
+    id: Date.now(),
+    title,
+    author,
+    rating,
+    spicy,
+    cover: cover || 'https://images.unsplash.com/photo-1543002588-bfa74002ed7e?w=300'
+  };
+
+  userBooks.push(newBook);
+  localStorage.setItem('mylibrary_books', JSON.stringify(userBooks));
+
+  document.getElementById('add-book-form').reset();
+  alert(`🎉 "${title}" salvato con successo!`);
+
+  renderBooksList();
+  if (library3DInstance) library3DInstance.buildShelves();
+}
+
+function renderBooksList() {
+  const container = document.getElementById('my-books-list');
+  const countBadge = document.getElementById('books-count-badge');
+  countBadge.textContent = `${userBooks.length} Libri`;
+
+  if (userBooks.length === 0) {
+    container.innerHTML = '<p style="grid-column: 1/-1; color: var(--text-secondary);">Nessun libro salvato. Aggiungine uno usando il modulo sopra!</p>';
+    return;
+  }
+
+  container.innerHTML = userBooks.map(b => `
+    <div class="card" style="padding: 1rem; text-align: center; margin-bottom: 0;">
+      <img src="${b.cover}" style="height: 120px; object-fit: cover; border-radius: 6px; margin-bottom: 0.5rem;" onError="this.src='https://images.unsplash.com/photo-1543002588-bfa74002ed7e?w=300'">
+      <h4 style="margin: 0.3rem 0; font-size: 1rem;">${b.title}</h4>
+      <small style="color: var(--text-secondary);">${b.author}</small><br>
+      <div style="margin-top: 0.5rem; font-size: 0.8rem;">
+        ${'⭐'.repeat(b.rating)} ${'🌶️'.repeat(b.spicy)}
+      </div>
+      <button class="btn-primary" style="margin-top: 0.5rem; width: 100%; font-size: 0.8rem;" onclick="deleteBook(${b.id})">Elimina</button>
+    </div>
+  `).join('');
+}
+
+function deleteBook(id) {
+  userBooks = userBooks.filter(b => b.id !== id);
+  localStorage.setItem('mylibrary_books', JSON.stringify(userBooks));
+  renderBooksList();
+  if (library3DInstance) library3DInstance.buildShelves();
+}
+
+// --- RICERCA GOOGLE BOOKS ---
 async function handleGlobalSearch() {
   const query = document.getElementById('global-search-input').value.trim();
   const container = document.getElementById('search-results-container');
@@ -28,171 +162,86 @@ async function handleGlobalSearch() {
 
   container.innerHTML = '<p>Ricerca in corso...</p>';
 
-  // Ricerca Utenti da Serverless Vercel
-  let localData = { users: [] };
   try {
-    const res = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
-    localData = await res.json();
-  } catch(e) {}
+    const res = await fetch(`https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(query)}&maxResults=3`);
+    const data = await res.json();
+    
+    container.innerHTML = '';
+    if (data.items) {
+      data.items.forEach(item => {
+        const info = item.volumeInfo;
+        const title = (info.title || '').replace(/'/g, "\\'");
+        const author = info.authors ? info.authors[0].replace(/'/g, "\\'") : 'Sconosciuto';
+        const cover = info.imageLinks ? info.imageLinks.thumbnail : '';
 
-  // Ricerca Google Books
-  let googleItems = [];
-  try {
-    const gRes = await fetch(`https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(query)}&maxResults=4`);
-    const gData = await gRes.json();
-    if (gData.items) googleItems = gData.items;
-  } catch(e) {}
-
-  container.innerHTML = '<h3>Risultati:</h3>';
-
-  if (localData.users && localData.users.length > 0) {
-    localData.users.forEach(u => {
-      container.innerHTML += `
-        <div style="padding: 8px; border: 1px solid var(--border-color); margin-bottom: 5px; border-radius: 6px; display: flex; justify-content: space-between; align-items: center;">
-          <span>👤 <strong>@${u.username}</strong></span>
-          <div>
-            <button class="btn-primary" onclick="alert('Ora segui @${u.username}')">Segui</button>
-            <button class="btn-pink" onclick="openDirectMessage('${u.username}')">Messaggio Privato</button>
+        container.innerHTML += `
+          <div style="padding: 8px; border: 1px solid var(--border-color); margin-bottom: 8px; border-radius: 8px; display: flex; gap: 10px; align-items: center;">
+            ${cover ? `<img src="${cover}" style="height:40px;">` : ''}
+            <div style="flex:1;">
+              <strong>${title}</strong><br><small>${author}</small>
+            </div>
+            <button class="btn-pink" onclick="autofill('${title}', '${author}', '${cover}')">Importa</button>
           </div>
-        </div>
-      `;
-    });
+        `;
+      });
+    } else {
+      container.innerHTML = '<p>Nessun libro trovato.</p>';
+    }
+  } catch(e) {
+    container.innerHTML = '<p>Errore durante la ricerca.</p>';
   }
-
-  googleItems.forEach(item => {
-    const info = item.volumeInfo;
-    const title = (info.title || '').replace(/'/g, "\\'");
-    const authors = info.authors ? info.authors.join(', ').replace(/'/g, "\\'") : 'Sconosciuto';
-    const isbn = info.industryIdentifiers ? info.industryIdentifiers[0].identifier : '';
-    const pages = info.pageCount || '';
-    const year = info.publishedDate ? info.publishedDate.substring(0, 4) : '';
-    const cover = info.imageLinks ? info.imageLinks.thumbnail : '';
-
-    container.innerHTML += `
-      <div style="padding: 10px; border: 1px solid var(--border-color); margin-bottom: 8px; border-radius: 8px; display: flex; gap: 10px; align-items: center;">
-        ${cover ? `<img src="${cover}" style="height:50px;">` : ''}
-        <div style="flex: 1;">
-          <strong>📖 ${title}</strong><br>
-          <small>${authors} (${year})</small>
-        </div>
-        <button class="btn-primary" onclick="autofillBook('${title}', '${authors}', '${isbn}', '${pages}', '${year}', '${cover}')">
-          Compila Form
-        </button>
-      </div>
-    `;
-  });
 }
 
-function autofillBook(title, author, isbn, pages, year, cover) {
+function autofill(title, author, cover) {
   document.getElementById('book-title').value = title;
   document.getElementById('book-author').value = author;
-  document.getElementById('book-isbn').value = isbn;
-  document.getElementById('book-pages').value = pages;
-  document.getElementById('book-year').value = year;
   document.getElementById('book-cover-url').value = cover;
-  alert('Form compilato con i dati trovati!');
+  alert('Dati importati nel modulo!');
 }
 
-// 2. AGGIUNTA LIBRO
-function submitNewBook(e) {
-  e.preventDefault();
-  const title = document.getElementById('book-title').value;
-  alert(`Libro "${title}" aggiunto con successo alla tua libreria!`);
-  document.getElementById('add-book-form').reset();
-}
-
-// 3. LETTORE E-BOOK (ePUB.js)
-function openEbookReader(epubUrl, title) {
-  if (!epubUrl) {
-    alert("Nessun link e-book (.epub) fornito per questo libro.");
-    return;
-  }
-  document.getElementById('ebook-reader-modal').style.display = 'flex';
-  document.getElementById('reader-title').textContent = title;
-
-  const book = ePub(epubUrl);
-  currentRendition = book.renderTo("viewer", { width: "100%", height: "100%" });
-  currentRendition.display();
-}
-
-function nextEbookPage() { if(currentRendition) currentRendition.next(); }
-function prevEbookPage() { if(currentRendition) currentRendition.prev(); }
-function closeEbookReader() { document.getElementById('ebook-reader-modal').style.display = 'none'; }
-
-// 4. CHAT SYSTEM
-function switchChatRoom(roomId, roomTitle) {
-  activeRoom = roomId;
-  document.getElementById('current-chat-title').textContent = `💬 ${roomTitle}`;
-  document.getElementById('chat-messages-box').innerHTML = `<p><em>Sei entrato in: ${roomTitle}</em></p>`;
-}
-
-function toggleAnonMode(checkbox) {
-  const display = document.getElementById('sender-display');
-  display.textContent = checkbox.checked ? '(Stai inviando come: Anonimo)' : `(Nome: ${currentUser})`;
-}
-
+// --- CHAT ---
 function sendChatMessage() {
   const input = document.getElementById('chat-input-text');
-  const isAnon = document.getElementById('anon-check').checked;
   const text = input.value.trim();
+  if (!text) return;
 
-  if (text !== '') {
-    const sender = isAnon ? 'Anonimo' : currentUser;
-    appendChatMessage(sender, text, new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}));
-    input.value = '';
-  }
-}
-
-function appendChatMessage(sender, text, time) {
   const box = document.getElementById('chat-messages-box');
   const msg = document.createElement('div');
-  msg.style = 'margin-bottom: 8px; padding: 6px 10px; background: var(--bg-primary); border-radius: 6px;';
-  msg.innerHTML = `<small style="color:var(--accent-lilac);">${time}</small> <strong>${sender}:</strong> ${text}`;
+  msg.style = 'margin-bottom: 6px; padding: 6px; background: var(--bg-primary); border-radius: 6px; font-size: 0.9rem;';
+  msg.innerHTML = `<strong>${currentUser}:</strong> ${text}`;
   box.appendChild(msg);
   box.scrollTop = box.scrollHeight;
+  input.value = '';
 }
 
-function openDirectMessage(username) {
-  switchChatRoom(`dm_${username}`, `Messaggio Privato con @${username}`);
-}
-
-function createGroupModal() {
-  const name = prompt("Nome del nuovo gruppo:");
-  if (name) switchChatRoom(`group_${Date.now()}`, `Gruppo: ${name}`);
-}
-
-// 5. LIBRERIA 3D INTERATTIVA (Three.js Drag & Drop e Raycaster)
+// --- LIBRERIA 3D REALE ---
 class InteractiveLibrary3D {
   constructor(containerId) {
     this.container = document.getElementById(containerId);
-    this.shelvesCount = 3;
-    this.shelfHeight = 2.2;
-    this.books = [];
     this.init();
-    this.setupInteractions();
   }
 
   init() {
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0x18181b);
+    this.scene.background = new THREE.Color(0x09090b);
 
-    this.camera = new THREE.PerspectiveCamera(55, this.container.clientWidth / this.container.clientHeight, 0.1, 1000);
-    this.camera.position.set(0, 3, 8);
+    this.camera = new THREE.PerspectiveCamera(50, this.container.clientWidth / this.container.clientHeight, 0.1, 1000);
+    this.camera.position.set(0, 2.5, 7);
 
     this.renderer = new THREE.WebGLRenderer({ antialias: true });
     this.renderer.setSize(this.container.clientWidth, this.container.clientHeight);
     this.container.appendChild(this.renderer.domElement);
 
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
-    this.scene.add(ambientLight);
+    const light = new THREE.AmbientLight(0xffffff, 1);
+    this.scene.add(light);
 
-    const pointLight = new THREE.PointLight(0xc084fc, 1.2, 20);
-    pointLight.position.set(2, 6, 6);
+    const pointLight = new THREE.PointLight(0xc084fc, 1.5, 20);
+    pointLight.position.set(0, 5, 5);
     this.scene.add(pointLight);
 
     this.shelvesGroup = new THREE.Group();
     this.scene.add(this.shelvesGroup);
-    
+
     this.buildShelves();
     this.animate();
   }
@@ -201,86 +250,31 @@ class InteractiveLibrary3D {
     while (this.shelvesGroup.children.length > 0) {
       this.shelvesGroup.remove(this.shelvesGroup.children[0]);
     }
-    this.books = [];
 
-    const shelfMat = new THREE.MeshStandardMaterial({ color: 0x3f2e56, roughness: 0.5 });
-    const shelfGeo = new THREE.BoxGeometry(5, 0.12, 1.2);
+    const shelfMat = new THREE.MeshStandardMaterial({ color: 0x27272a });
+    const shelfGeo = new THREE.BoxGeometry(5, 0.1, 1);
 
-    for (let i = 0; i < this.shelvesCount; i++) {
+    // Crea 2 scaffali
+    [0, 2].forEach(y => {
       const shelf = new THREE.Mesh(shelfGeo, shelfMat);
-      shelf.position.y = i * this.shelfHeight;
+      shelf.position.y = y;
       this.shelvesGroup.add(shelf);
-      this.populateShelfWithBooks(shelf.position.y, i);
-    }
-  }
-
-  populateShelfWithBooks(shelfY, shelfIndex) {
-    const bookGeo = new THREE.BoxGeometry(0.25, 0.9, 0.7);
-    const colors = [0xc084fc, 0xf472b6, 0x38bdf8, 0xfacc15];
-
-    for (let x = -2; x <= 2; x += 0.5) {
-      const mat = new THREE.MeshStandardMaterial({ color: colors[Math.floor(Math.random() * colors.length)] });
-      const book = new THREE.Mesh(bookGeo, mat);
-      
-      book.position.set(x, shelfY + 0.51, 0);
-      const bookId = Math.floor(Math.random() * 1000);
-      book.userData = { id: bookId, title: `Libro #${bookId}` };
-      
-      this.shelvesGroup.add(book);
-      this.books.push(book);
-    }
-  }
-
-  addShelf() {
-    this.shelvesCount++;
-    this.buildShelves();
-    this.camera.position.y = (this.shelvesCount * this.shelfHeight) / 2;
-  }
-
-  setupInteractions() {
-    this.raycaster = new THREE.Raycaster();
-    this.mouse = new THREE.Vector2();
-    this.selectedBook = null;
-    let isDragging = false;
-    const canvas = this.renderer.domElement;
-
-    canvas.addEventListener('click', (e) => {
-      const rect = canvas.getBoundingClientRect();
-      this.mouse.x = ((e.clientX - rect.left) / canvas.clientWidth) * 2 - 1;
-      this.mouse.y = -((e.clientY - rect.top) / canvas.clientHeight) * 2 + 1;
-
-      this.raycaster.setFromCamera(this.mouse, this.camera);
-      const intersects = this.raycaster.intersectObjects(this.books);
-
-      if (intersects.length > 0) {
-        const book = intersects[0].object;
-        switchChatRoom(`book_${book.userData.id}`, `Chat Libro: ${book.userData.title}`);
-      }
     });
 
-    canvas.addEventListener('mousedown', (e) => {
-      const rect = canvas.getBoundingClientRect();
-      this.mouse.x = ((e.clientX - rect.left) / canvas.clientWidth) * 2 - 1;
-      this.mouse.y = -((e.clientY - rect.top) / canvas.clientHeight) * 2 + 1;
+    // Disegna 1 libro 3D per ogni libro reale inserito dall'utente!
+    const colors = [0xc084fc, 0xf472b6, 0x38bdf8, 0x4ade80, 0xfacc15];
+    userBooks.forEach((book, index) => {
+      const bookGeo = new THREE.BoxGeometry(0.3, 0.9, 0.7);
+      const mat = new THREE.MeshStandardMaterial({ color: colors[index % colors.length] });
+      const bookMesh = new THREE.Mesh(bookGeo, mat);
 
-      this.raycaster.setFromCamera(this.mouse, this.camera);
-      const intersects = this.raycaster.intersectObjects(this.books);
+      const shelfIndex = Math.floor(index / 8);
+      const xPos = -1.8 + (index % 8) * 0.5;
+      const yPos = shelfIndex * 2 + 0.5;
 
-      if (intersects.length > 0) {
-        isDragging = true;
-        this.selectedBook = intersects[0].object;
-      }
+      bookMesh.position.set(xPos, yPos, 0);
+      this.shelvesGroup.add(bookMesh);
     });
-
-    canvas.addEventListener('mousemove', (e) => {
-      if (isDragging && this.selectedBook) {
-        const rect = canvas.getBoundingClientRect();
-        const mouseX = ((e.clientX - rect.left) / canvas.clientWidth) * 2 - 1;
-        this.selectedBook.position.x = mouseX * 2.2;
-      }
-    });
-
-    canvas.addEventListener('mouseup', () => { isDragging = false; this.selectedBook = null; });
   }
 
   animate() {
@@ -288,11 +282,3 @@ class InteractiveLibrary3D {
     this.renderer.render(this.scene, this.camera);
   }
 }
-
-// Inizializzazione
-window.addEventListener('DOMContentLoaded', () => {
-  library3DInstance = new InteractiveLibrary3D('canvas-3d-container');
-  if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('/sw.js').catch(() => {});
-  }
-});

@@ -1,42 +1,71 @@
 <!DOCTYPE html>
-<html lang="it" data-theme="light">
+<html lang="it" data-theme="dark">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>LoveMyLibrary</title>
-  <link rel="manifest" href="manifest.json">
+  <link rel="manifest" href="/manifest.json">
   <link rel="stylesheet" href="styles.css">
 
-  <!-- Three.js (3D), ePUB.js (Lettore Ebook) e Supabase (DB & Realtime Chat) -->
+  <!-- Librerie 3D e ePUB -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/epub.js/0.3.88/epub.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
 
   <header>
-    <div class="logo">LoveMyLibrary</div>
-    <div style="display: flex; gap: 10px;">
-      <button id="theme-toggle" class="btn-primary">🌙 Notturno</button>
-      <button id="user-btn" class="btn-pink">👤 Accedi</button>
+    <div class="logo">✨ LoveMyLibrary</div>
+    <div style="display: flex; gap: 10px; align-items: center;">
+      <button id="pwa-install-btn" class="btn-pink" style="display: none;">📱 Installa App</button>
+      <button id="theme-toggle" class="btn-primary">☀️ Chiaro</button>
+      <span id="user-badge" style="font-weight: bold; color: var(--accent-lilac);"></span>
+      <button id="logout-btn" class="btn-primary" style="display: none;" onclick="logout()">Esci</button>
     </div>
   </header>
 
-  <main style="max-width: 1100px; margin: 1.5rem auto; padding: 0 1rem;">
+  <!-- SCHERMATA DI AUTENTICAZIONE (LOGIN / REGISTRAZIONE) -->
+  <div id="auth-screen" style="max-width: 450px; margin: 4rem auto; padding: 1rem;">
+    <div class="card" style="text-align: center;">
+      <h2 id="auth-title">🔐 Accedi a LoveMyLibrary</h2>
+      
+      <form id="auth-form" onsubmit="handleAuth(event)">
+        <div style="margin-bottom: 1rem; text-align: left;">
+          <label>Username / Email</label>
+          <input type="text" id="auth-username" required placeholder="Inserisci il tuo username">
+        </div>
+        <div style="margin-bottom: 1rem; text-align: left;">
+          <label>Password</label>
+          <input type="password" id="auth-password" required placeholder="••••••••">
+        </div>
+
+        <button type="submit" id="auth-submit-btn" class="btn-pink" style="width: 100%; padding: 0.8rem; font-size: 1rem;">
+          Accedi
+        </button>
+      </form>
+
+      <div style="margin-top: 1.5rem; font-size: 0.9rem;">
+        <span id="auth-toggle-text">Non hai un account?</span> 
+        <a href="#" id="auth-toggle-link" onclick="toggleAuthMode(event)" style="color: var(--accent-lilac); font-weight: bold; text-decoration: none;">Registrati qui</a>
+      </div>
+    </div>
+  </div>
+
+  <!-- CONTENUTO PRINCIPALE (VISIBILE SOLO DOPO IL LOGIN) -->
+  <main id="app-content" style="display: none; max-width: 1100px; margin: 1.5rem auto; padding: 0 1rem;">
     
-    <!-- 1. RICERCA GENERALE (Google Books & Vercel API) -->
+    <!-- 1. RICERCA GENERALE -->
     <section class="card">
-      <h2>🔍 Cerca Libri o Account Utenti</h2>
+      <h2>🔍 Cerca Libri (Google Books) o Utenti</h2>
       <div style="display: flex; gap: 10px;">
-        <input type="text" id="global-search-input" placeholder="Cerca titolo, autore, ISBN o username utente...">
+        <input type="text" id="global-search-input" placeholder="Cerca titolo, autore, ISBN o username...">
         <button class="btn-primary" onclick="handleGlobalSearch()">Cerca</button>
       </div>
       <div id="search-results-container" style="margin-top: 1rem;"></div>
     </section>
 
-    <!-- 2. AGGIUNTA LIBRO ED E-BOOK -->
+    <!-- 2. AGGIUNTA LIBRO -->
     <section class="card">
-      <h2>➕ Aggiungi Libro o E-Book alla Biblioteca</h2>
+      <h2>➕ Aggiungi un Nuovo Libro</h2>
       <form id="add-book-form" onsubmit="submitNewBook(event)">
         <div class="form-grid">
           <div>
@@ -48,33 +77,17 @@
             <input type="text" id="book-author" required placeholder="Es. Umberto Eco">
           </div>
           <div>
-            <label>ISBN</label>
-            <input type="text" id="book-isbn" placeholder="978-8804668220">
-          </div>
-          <div>
-            <label>Prezzo (€)</label>
-            <input type="number" id="book-price" step="0.01" placeholder="15.00">
-          </div>
-          <div>
-            <label>Pagine</label>
-            <input type="number" id="book-pages" placeholder="500">
-          </div>
-          <div>
-            <label>Anno Pubblicazione</label>
-            <input type="number" id="book-year" placeholder="1980">
-          </div>
-          <div>
-            <label>Valutazione (Stelle)</label>
+            <label>Valutazione</label>
             <select id="book-rating">
-              <option value="1">⭐</option>
-              <option value="2">⭐⭐</option>
-              <option value="3">⭐⭐⭐</option>
+              <option value="5">⭐⭐⭐⭐⭐</option>
               <option value="4">⭐⭐⭐⭐</option>
-              <option value="5" selected>⭐⭐⭐⭐⭐</option>
+              <option value="3">⭐⭐⭐</option>
+              <option value="2">⭐⭐</option>
+              <option value="1">⭐</option>
             </select>
           </div>
           <div>
-            <label>Livello Spicy (Peperoncini)</label>
+            <label>Livello Spicy</label>
             <select id="book-spicy">
               <option value="0">Nessuno</option>
               <option value="1">🌶️</option>
@@ -87,60 +100,40 @@
         </div>
 
         <div style="margin-top: 1rem;">
-          <label>Trama</label>
-          <textarea id="book-synopsis" rows="3" placeholder="Scrivi la trama qui..."></textarea>
-        </div>
-
-        <div class="form-grid" style="margin-top: 1rem;">
-          <div>
-            <label>URL Copertina o PDF/JPG</label>
-            <input type="text" id="book-cover-url" placeholder="https://link-copertina.jpg">
-          </div>
-          <div>
-            <label>URL E-Book (Link file .epub per lettura online)</label>
-            <input type="text" id="book-epub-url" placeholder="https://link-ebook.epub">
-          </div>
+          <label>URL Copertina (opzionale)</label>
+          <input type="text" id="book-cover-url" placeholder="https://link-immagine.jpg">
         </div>
 
         <button type="submit" class="btn-pink" style="width: 100%; margin-top: 1rem; padding: 0.8rem;">
-          🚀 Pubblica nella Biblioteca Cloud
+          🚀 Salva Libro nella Mia Libreria
         </button>
       </form>
     </section>
 
-    <!-- 3. LIBRERIA 3D INTERATTIVA -->
+    <!-- 3. LIBRERIA 3D & LISTA LIBRI -->
     <section class="card">
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
         <h2>📚 La Tua Libreria 3D</h2>
-        <button class="btn-primary" onclick="library3DInstance.addShelf()">+ Aggiungi Scaffale</button>
+        <span id="books-count-badge" style="background: var(--accent-lilac); color: white; padding: 4px 12px; border-radius: 20px; font-weight: bold;">0 Libri</span>
       </div>
       <p style="font-size: 0.9rem; color: var(--text-secondary);">
-        💡 Fai drag & drop per spostare i libri. Clicca su un libro per aprirne la chat specifica o il lettore.
+        💡 Clicca su un libro nel 3D per selezionarlo e aprire la sua chat!
       </p>
+      
       <div id="canvas-3d-container"></div>
+
+      <!-- LISTA LIBRI SALVATI -->
+      <h3 style="margin-top: 1.5rem;">📋 I Tuoi Libri Salvati:</h3>
+      <div id="my-books-list" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 1rem; margin-top: 1rem;">
+        <!-- I libri inseriti appariranno qui -->
+      </div>
     </section>
 
-    <!-- 4. CHAT COMMUNITY / LIBRO / GRUPPI / DM -->
+    <!-- 4. CHAT COMMUNITY -->
     <section class="card">
-      <div style="display: flex; justify-content: space-between; align-items: center;">
-        <h2 id="current-chat-title">💬 Chat Community Generale</h2>
-        <div>
-          <button class="btn-primary" onclick="switchChatRoom('global', 'Community Generale')">Generale</button>
-          <button class="btn-pink" onclick="createGroupModal()">+ Nuovo Gruppo</button>
-        </div>
+      <h2 id="current-chat-title">💬 Chat Generale</h2>
+      <div id="chat-messages-box" style="height: 200px; border: 1px solid var(--border-color); overflow-y: auto; padding: 1rem; border-radius: 8px; margin-bottom: 1rem; background-color: var(--bg-surface);">
       </div>
-
-      <div style="margin: 0.5rem 0; display: flex; gap: 10px; align-items: center;">
-        <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
-          <input type="checkbox" id="anon-check" style="width: auto;" onchange="toggleAnonMode(this)"> Invia in anonimo
-        </label>
-        <span id="sender-display" style="font-size: 0.9rem; font-weight: bold;">(Nome: UtenteDemo)</span>
-      </div>
-
-      <div id="chat-messages-box" style="height: 250px; border: 1px solid var(--border-color); overflow-y: auto; padding: 1rem; border-radius: 8px; margin-bottom: 1rem; background-color: var(--bg-surface);">
-        <p><em>Benvenuto nella chat di LoveMyLibrary!</em></p>
-      </div>
-
       <div style="display: flex; gap: 10px;">
         <input type="text" id="chat-input-text" placeholder="Scrivi un messaggio...">
         <button class="btn-primary" onclick="sendChatMessage()">Invia</button>
@@ -148,19 +141,6 @@
     </section>
 
   </main>
-
-  <!-- MODALE LETTORE E-BOOK -->
-  <div id="ebook-reader-modal" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:var(--bg-primary); z-index:1000; flex-direction:column;">
-    <div style="padding:1rem; background:var(--bg-surface); display:flex; justify-content:space-between; align-items:center; border-bottom: 2px solid var(--accent-lilac);">
-      <h3 id="reader-title" style="margin:0;">Lettura E-Book</h3>
-      <div>
-        <button onclick="prevEbookPage()" class="btn-primary">◀️ Prec</button>
-        <button onclick="nextEbookPage()" class="btn-primary">Succ ▶️</button>
-        <button onclick="closeEbookReader()" style="background:#ef4444; color:white; border:none; padding:0.5rem 1rem; border-radius:8px; margin-left: 10px;">Chiudi</button>
-      </div>
-    </div>
-    <div id="viewer" style="flex:1; width:100%; height:100%;"></div>
-  </div>
 
   <script src="app.js"></script>
 </body>
