@@ -17,11 +17,14 @@
 </head>
 <body>
 
+  <!-- Contenitore reCAPTCHA invisibile per SMS -->
+  <div id="recaptcha-container"></div>
+
   <!-- HEADER E NAVBAR PRINCIPALE -->
   <header>
     <div class="logo">📚 LoveMyLibrary</div>
 
-    <!-- Menu Utente (Visibile solo a utente connesso) -->
+    <!-- Menu Utente -->
     <div class="user-menu-container" id="user-menu-wrapper" style="display: none;">
       <button class="user-profile-btn" onclick="toggleDropdown(event)">
         <span id="user-avatar-badge" style="font-size: 1.2rem; display: flex; align-items: center;">👤</span>
@@ -109,11 +112,11 @@
     <div class="card" style="width: 90%; max-width: 420px; background: var(--bg-surface);">
       <h3>🔑 Recupero o Cambio Password</h3>
       <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 1rem;">
-        Inserisci la tua email. Riceverai un link reale inviato da Firebase per impostare una nuova password. Se desideri **mantenere la password attuale**, ignorando l'email ricevuta la tua password rimarrà invariata.
+        Inserisci la tua email per ricevere il link di ripristino sicuro inviato da Firebase.
       </p>
       <input type="email" id="reset-email-input" placeholder="La tua email..." style="margin-bottom: 1rem;">
       <div style="display: flex; gap: 10px;">
-        <button class="btn-pink" style="flex: 1;" onclick="sendPasswordReset()">Invia Mail con Link</button>
+        <button class="btn-pink" style="flex: 1;" onclick="sendPasswordReset()">Invia Mail</button>
         <button class="btn-primary" onclick="closeForgotPasswordModal()">Annulla</button>
       </div>
     </div>
@@ -121,9 +124,9 @@
 
   <!-- MODALE GESTIONE ACCOUNT & PROFILO -->
   <div id="account-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.7); z-index: 2000; justify-content: center; align-items: center; padding: 1rem;">
-    <div class="card" style="width: 100%; max-width: 520px; background: var(--bg-surface); max-height: 90vh; overflow-y: auto;">
+    <div class="card" style="width: 100%; max-width: 550px; background: var(--bg-surface); max-height: 90vh; overflow-y: auto;">
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-        <h3>⚙️ Gestione Account & Profilo</h3>
+        <h3>⚙️ Gestione Account & Sicurezza</h3>
         <button onclick="closeAccountModal()" style="background: none; border: none; font-size: 1.5rem; color: var(--text-primary); cursor: pointer;">✕</button>
       </div>
 
@@ -136,56 +139,23 @@
           <div><span id="modal-followers-count" style="color: var(--accent-pink);">0</span> <br><small style="color: var(--text-secondary); font-weight: normal;">Follower</small></div>
           <div><span id="modal-following-count" style="color: var(--accent-lilac);">0</span> <br><small style="color: var(--text-secondary); font-weight: normal;">Seguiti</small></div>
         </div>
-
-        <small style="color: var(--text-secondary);">Scegli una Memoji/Emoji o inserisci l'URL di una foto</small>
-        
-        <div style="display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; margin-top: 0.8rem;">
-          <button type="button" onclick="selectAvatar('📚')" class="btn-avatar-option">📚</button>
-          <button type="button" onclick="selectAvatar('🐱')" class="btn-avatar-option">🐱</button>
-          <button type="button" onclick="selectAvatar('🦊')" class="btn-avatar-option">🦊</button>
-          <button type="button" onclick="selectAvatar('☕')" class="btn-avatar-option">☕</button>
-          <button type="button" onclick="selectAvatar('✨')" class="btn-avatar-option">✨</button>
-          <button type="button" onclick="selectAvatar('👑')" class="btn-avatar-option">👑</button>
-          <button type="button" onclick="selectAvatar('🎧')" class="btn-avatar-option">🎧</button>
-          <button type="button" onclick="selectAvatar('🐉')" class="btn-avatar-option">🐉</button>
-          <button type="button" onclick="selectAvatar('🧙‍♀️')" class="btn-avatar-option">🧙‍♀️</button>
-          <button type="button" onclick="selectAvatar('🧛‍♂️')" class="btn-avatar-option">🧛‍♂️</button>
-          <button type="button" onclick="selectAvatar('🧚‍♀️')" class="btn-avatar-option">🧚‍♀️</button>
-          <button type="button" onclick="selectAvatar('🦄')" class="btn-avatar-option">🦄</button>
-        </div>
       </div>
 
       <form id="profile-form" onsubmit="saveProfileChanges(event)">
-        <div style="margin-bottom: 1rem;">
-          <label>URL Foto Personalizzata (Opzionale)</label>
-          <input type="text" id="profile-photo-url" placeholder="https://link-tua-foto.jpg" oninput="previewPhotoUrl(this.value)">
-        </div>
-
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 1rem;">
           <div>
             <label>Nickname (Unico)</label>
             <input type="text" id="profile-username" disabled style="opacity: 0.7; cursor: not-allowed;">
           </div>
           <div>
-            <label>Email Utente</label>
-            <input type="email" id="profile-email" disabled style="opacity: 0.7; cursor: not-allowed;">
-          </div>
-        </div>
-
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 1rem;">
-          <div>
             <label>Età</label>
-            <input type="number" id="profile-age" placeholder="Es. 23" min="10" max="120">
-          </div>
-          <div>
-            <label>Genere Preferito</label>
-            <input type="text" id="profile-favorite-genre" placeholder="Es. Romance, Fantasy...">
+            <input type="number" id="profile-age" placeholder="Es. 23">
           </div>
         </div>
 
         <div style="margin-bottom: 1rem;">
-          <label>Autore Preferito</label>
-          <input type="text" id="profile-favorite-author" placeholder="Es. Colleen Hoover, J.K. Rowling...">
+          <label>URL Foto Personalizzata</label>
+          <input type="text" id="profile-photo-url" placeholder="https://link-tua-foto.jpg" oninput="previewPhotoUrl(this.value)">
         </div>
 
         <div style="margin-bottom: 1.2rem;">
@@ -198,35 +168,58 @@
         </button>
       </form>
 
-      <hr style="border: 0; border-top: 1px solid var(--border-color); margin: 1.2rem 0;">
+      <hr style="border: 0; border-top: 1px solid var(--border-color); margin: 1.5rem 0;">
 
-      <h4>🔒 Modifica o Mantieni Password</h4>
-      <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 0.8rem;">
-        Invia una mail alla tua casella di posta per aggiornare la password o per confermare l'uso della tua password attuale.
-      </p>
-      <button class="btn-primary" style="width: 100%;" onclick="sendPasswordResetFromAccount()">
-        📧 Invia Mail Link Ripristino Password
+      <!-- SEZIONE CAMBIO EMAIL -->
+      <h4>✉️ Modifica Indirizzo Email</h4>
+      <div style="display: flex; gap: 8px; margin-bottom: 1rem;">
+        <input type="email" id="new-email-input" placeholder="Nuova email...">
+        <button class="btn-primary" onclick="requestEmailChange()">Aggiorna Mail</button>
+      </div>
+
+      <!-- SEZIONE RIPRISTINO PASSWORD -->
+      <h4 style="margin-top: 1rem;">🔒 Password</h4>
+      <button class="btn-primary" style="width: 100%; margin-bottom: 1.5rem;" onclick="sendPasswordResetFromAccount()">
+        📧 Invia Mail per Cambiare/Reimpostare Password
       </button>
+
+      <!-- SEZIONE VERIFICA SMS -->
+      <hr style="border: 0; border-top: 1px solid var(--border-color); margin: 1.5rem 0;">
+      <h4>📱 Verifica Telefono via SMS</h4>
+      <p style="font-size: 0.8rem; color: var(--text-secondary);">Inserisci il numero in formato internazionale (es. +393401234567)</p>
+      <div style="display: flex; gap: 8px; margin-bottom: 0.8rem;">
+        <input type="tel" id="phone-number-input" placeholder="+393401234567">
+        <button class="btn-pink" onclick="sendSMSCode()">Invia SMS</button>
+      </div>
+      <div style="display: flex; gap: 8px;">
+        <input type="text" id="sms-code-input" placeholder="Codice 6 cifre...">
+        <button class="btn-primary" onclick="confirmSMSCode()">Conferma Codice</button>
+      </div>
     </div>
   </div>
 
-  <!-- CONTENUTO APPLICAZIONE (HOMEPAGE CLEAN) -->
+  <!-- CONTENUTO APPLICAZIONE -->
   <main id="app-content" style="display: none; max-width: 1100px; margin: 1.5rem auto; padding: 0 1rem;">
     
-    <!-- SEZIONE UNICA ZONA CHAT (DM + COMMUNITY PUBBLICA) -->
+    <!-- BANNER VERIFICA EMAIL -->
+    <div id="email-verification-banner" style="display: none; background: #FEF3C7; color: #92400E; padding: 0.8rem 1rem; border-radius: 8px; margin-bottom: 1rem; font-size: 0.9rem; align-items: center; justify-content: space-between;">
+      <span>⚠️ Il tuo indirizzo email non è ancora verificato. Controlla la tua posta!</span>
+      <button onclick="resendVerificationEmail()" style="background: #D97706; color: white; padding: 4px 10px; border-radius: 4px; font-size: 0.8rem;">Reinvia Mail</button>
+    </div>
+
+    <!-- SEZIONE ZONA CHAT (DM + COMMUNITY PUBBLICA) -->
     <section class="card" id="chat-zone-section" style="display: none;">
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
         <h2>💬 Zona Chat</h2>
         <button class="btn-primary" onclick="closeChatZone()" style="font-size: 0.85rem;">✕ Chiudi Zona Chat</button>
       </div>
 
-      <!-- TAB PER PASSARE TRA CHAT PRIVATA E CHAT COMMUNITY -->
       <div class="chat-tabs">
         <button class="chat-tab-btn active" id="tab-btn-private" onclick="switchChatTab('private')">💌 Chat Private (DM)</button>
         <button class="chat-tab-btn" id="tab-btn-community" onclick="switchChatTab('community')">🌐 Chat Community Pubblica</button>
       </div>
 
-      <!-- CONTENUTO CHAT PRIVATA (DM) -->
+      <!-- CHAT PRIVATA -->
       <div id="chat-tab-content-private" class="chat-tab-content">
         <div class="private-chat-layout">
           <div class="private-users-list" id="dm-users-list">
@@ -235,13 +228,11 @@
 
           <div class="private-chat-box">
             <div class="private-chat-header" id="dm-chat-header">
-              <span>💬 Seleziona un utente a sinistra per chattare</span>
+              <span>💬 Seleziona un utente per chattare</span>
             </div>
 
             <div class="private-messages-history" id="dm-messages-container">
-              <div style="text-align: center; color: var(--text-secondary); margin-top: 3rem;">
-                Nessuna conversazione selezionata.
-              </div>
+              <div style="text-align: center; color: var(--text-secondary); margin-top: 3rem;">Nessuna conversazione selezionata.</div>
             </div>
 
             <div class="private-chat-input-row">
@@ -252,40 +243,29 @@
         </div>
       </div>
 
-      <!-- CONTENUTO CHAT COMMUNITY PUBBLICA -->
+      <!-- CHAT COMMUNITY -->
       <div id="chat-tab-content-community" class="chat-tab-content" style="display: none;">
         <div id="chat-messages-box" style="height: 320px; border: 1px solid var(--border-color); overflow-y: auto; padding: 1rem; border-radius: 8px; margin-bottom: 1rem; background-color: var(--bg-primary);"></div>
         <div style="display: flex; gap: 10px;">
-          <input type="text" id="chat-input-text" placeholder="Scrivi un messaggio per tutta la community...">
+          <input type="text" id="chat-input-text" placeholder="Scrivi un messaggio per la community...">
           <button class="btn-pink" onclick="sendChatMessage()">Invia</button>
         </div>
       </div>
     </section>
 
-    <!-- SEZIONE SCOPRI COMMUNITY & FOLLOW -->
+    <!-- COMMUNITY -->
     <section class="card" id="community-section">
       <h2>👥 Scopri Altri Lettori (Community)</h2>
-      <p style="color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 1rem;">
-        Segui gli utenti per rimanere aggiornato sulle loro letture!
-      </p>
-      
-      <div id="users-community-list" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 1rem;">
-      </div>
+      <div id="users-community-list" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 1rem;"></div>
     </section>
 
-    <!-- FORM AGGIUNTA LIBRO -->
+    <!-- FORM LIBRO -->
     <section class="card" id="add-book-section">
       <h2>➕ Aggiungi un Libro alla tua Biblioteca</h2>
       <form id="add-book-form" onsubmit="submitNewBook(event)">
         <div class="form-grid">
-          <div>
-            <label>Titolo *</label>
-            <input type="text" id="book-title" required placeholder="Es. Orgoglio e Pregiudizio">
-          </div>
-          <div>
-            <label>Autore *</label>
-            <input type="text" id="book-author" required placeholder="Es. Jane Austen">
-          </div>
+          <div><label>Titolo *</label><input type="text" id="book-title" required></div>
+          <div><label>Autore *</label><input type="text" id="book-author" required></div>
           <div>
             <label>Valutazione</label>
             <select id="book-rating">
@@ -297,26 +277,20 @@
             </select>
           </div>
           <div>
-            <label>Livello Spicy</label>
+            <label>Spicy</label>
             <select id="book-spicy">
               <option value="0">Nessuno</option>
               <option value="1">🌶️</option>
               <option value="2">🌶️🌶️</option>
               <option value="3">🌶️🌶️🌶️</option>
-              <option value="4">🌶️🌶️🌶️🌶️</option>
-              <option value="5">🌶️🌶️🌶️🌶️🌶️</option>
             </select>
           </div>
         </div>
-
         <div style="margin-top: 1rem;">
           <label>URL Copertina</label>
-          <input type="text" id="book-cover-url" placeholder="https://link-copertina.jpg">
+          <input type="text" id="book-cover-url">
         </div>
-
-        <button type="submit" class="btn-pink" style="width: 100%; margin-top: 1rem; padding: 0.8rem;">
-          🚀 Salva Libro
-        </button>
+        <button type="submit" class="btn-pink" style="width: 100%; margin-top: 1rem; padding: 0.8rem;">🚀 Salva Libro</button>
       </form>
     </section>
 
@@ -326,9 +300,7 @@
         <h2>📚 La Tua Libreria 3D Cloud</h2>
         <span id="books-count-badge" style="background: var(--accent-lilac); color: white; padding: 4px 12px; border-radius: 20px; font-weight: bold;">0 Libri</span>
       </div>
-      
       <div id="canvas-3d-container"></div>
-
       <h3 style="margin-top: 1.5rem;">📋 I Tuoi Libri Salvati:</h3>
       <div id="my-books-list" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 1rem; margin-top: 1rem;"></div>
     </section>
