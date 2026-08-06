@@ -20,7 +20,7 @@ let userBooks = [];
 let library3DInstance = null;
 let selectedAvatarIcon = '👤';
 
-// Variabili Gestione Chat Privata (DM)
+// Variabili Gestione Chat
 let activeDMUserId = null;
 let dmUnsubscribe = null;
 
@@ -104,7 +104,38 @@ function scrollToSection(elementId) {
   document.getElementById('user-dropdown').classList.remove('show');
 }
 
-// --- SISTEMA MESSAGGI PRIVATI (DM) ---
+// --- GESTIONE ZONA CHAT (DM + COMMUNITY) ---
+function openChatZone() {
+  document.getElementById('user-dropdown').classList.remove('show');
+  const chatZone = document.getElementById('chat-zone-section');
+  chatZone.style.display = 'block';
+  chatZone.scrollIntoView({ behavior: 'smooth' });
+}
+
+function closeChatZone() {
+  document.getElementById('chat-zone-section').style.display = 'none';
+}
+
+function switchChatTab(tabName) {
+  const privateContent = document.getElementById('chat-tab-content-private');
+  const communityContent = document.getElementById('chat-tab-content-community');
+  const btnPrivate = document.getElementById('tab-btn-private');
+  const btnCommunity = document.getElementById('tab-btn-community');
+
+  if (tabName === 'private') {
+    privateContent.style.display = 'block';
+    communityContent.style.display = 'none';
+    btnPrivate.classList.add('active');
+    btnCommunity.classList.remove('active');
+  } else {
+    privateContent.style.display = 'none';
+    communityContent.style.display = 'block';
+    btnPrivate.classList.remove('active');
+    btnCommunity.classList.add('active');
+  }
+}
+
+// --- MESSAGGI PRIVATI DIRETTI (DM) ---
 async function loadPrivateChatUsers() {
   const container = document.getElementById('dm-users-list');
   if (!container) return;
@@ -133,27 +164,23 @@ async function loadPrivateChatUsers() {
 
     container.innerHTML = html || '<p style="color:var(--text-secondary); padding:1rem;">Nessun utente trovato.</p>';
   } catch (error) {
-    console.error("Errore caricamento contatti chat:", error);
+    console.error("Errore caricamento contatti:", error);
   }
 }
 
 function openPrivateChatWith(targetUserId, targetUsername) {
-  activeDMUserId = targetUserId;
-  
-  // Scorrimento alla sezione chat
-  scrollToSection('private-chat-section');
+  openChatZone();
+  switchChatTab('private');
 
-  // Aggiorna evidenziazione utente attivo
+  activeDMUserId = targetUserId;
   document.querySelectorAll('.dm-user-item').forEach(item => item.classList.remove('active'));
   const activeItem = document.getElementById(`dm-user-item-${targetUserId}`);
   if (activeItem) activeItem.classList.add('active');
 
-  // Abilita input e bottone
   document.getElementById('dm-input-text').disabled = false;
   document.getElementById('dm-send-btn').disabled = false;
   document.getElementById('dm-chat-header').innerHTML = `💬 Conversazione privata con <strong>@${targetUsername}</strong>`;
 
-  // Avvia l'ascolto dei messaggi in tempo reale
   listenPrivateMessages(targetUserId);
 }
 
@@ -213,32 +240,38 @@ async function sendPrivateMessage() {
   }
 }
 
-// --- SISTEMA DI FOLLOW / UNFOLLOW ---
+// --- CHAT COMMUNITY PUBBLICA ---
+function sendChatMessage() {
+  const input = document.getElementById('chat-input-text');
+  const text = input.value.trim();
+  if (!text) return;
+
+  const box = document.getElementById('chat-messages-box');
+  const msg = document.createElement('div');
+  msg.style = 'margin-bottom: 6px; padding: 6px; background: var(--bg-surface); border-radius: 6px; font-size: 0.9rem; border: 1px solid var(--border-color);';
+  msg.innerHTML = `<strong style="color: var(--accent-pink);">@${currentUserProfile.username}:</strong> ${text}`;
+  box.appendChild(msg);
+  box.scrollTop = box.scrollHeight;
+  input.value = '';
+}
+
+// --- FOLLOW / UNFOLLOW & COMMUNITY ---
 async function toggleFollowUser(targetUserId) {
   if (!currentUserProfile) return;
 
   const targetDocRef = db.collection('profiles').doc(targetUserId);
   const myDocRef = db.collection('profiles').doc(currentUserProfile.id);
-
   const isFollowing = currentUserProfile.following.includes(targetUserId);
 
   try {
     if (isFollowing) {
       currentUserProfile.following = currentUserProfile.following.filter(id => id !== targetUserId);
-      await myDocRef.update({
-        following: firebase.firestore.FieldValue.arrayRemove(targetUserId)
-      });
-      await targetDocRef.update({
-        followers: firebase.firestore.FieldValue.arrayRemove(currentUserProfile.id)
-      });
+      await myDocRef.update({ following: firebase.firestore.FieldValue.arrayRemove(targetUserId) });
+      await targetDocRef.update({ followers: firebase.firestore.FieldValue.arrayRemove(currentUserProfile.id) });
     } else {
       currentUserProfile.following.push(targetUserId);
-      await myDocRef.update({
-        following: firebase.firestore.FieldValue.arrayUnion(targetUserId)
-      });
-      await targetDocRef.update({
-        followers: firebase.firestore.FieldValue.arrayUnion(currentUserProfile.id)
-      });
+      await myDocRef.update({ following: firebase.firestore.FieldValue.arrayUnion(targetUserId) });
+      await targetDocRef.update({ followers: firebase.firestore.FieldValue.arrayUnion(currentUserProfile.id) });
     }
 
     updateFollowersStatsUI();
@@ -248,7 +281,6 @@ async function toggleFollowUser(targetUserId) {
   }
 }
 
-// --- CARICAMENTO COMMUNITY ---
 async function loadCommunityUsers() {
   const container = document.getElementById('users-community-list');
   if (!container) return;
@@ -291,7 +323,7 @@ async function loadCommunityUsers() {
   }
 }
 
-// --- GESTIONE ACCOUNT & AVATAR ---
+// --- GESTIONE ACCOUNT & REALE LINK CAMBIO PASSWORD ---
 function openAccountModal() {
   document.getElementById('user-dropdown').classList.remove('show');
   
@@ -374,16 +406,32 @@ async function saveProfileChanges(e) {
   }
 }
 
+// INVIO LINK DI RIPRISTINO PASSWORD UFFICIALE FIREBASE
 async function sendPasswordResetFromAccount() {
   try {
     await auth.sendPasswordResetEmail(currentUserProfile.email);
-    alert(`📧 Abbiamo inviato un link di modifica password a: ${currentUserProfile.email}`);
+    alert(`📧 Abbiamo inviato un'email ufficiale a: ${currentUserProfile.email}\n\nAll'interno troverai il link per reimpostare la password. Se vuoi mantenere la tua password attuale, è sufficiente ignorare il messaggio ricevuto!`);
+  } catch (error) {
+    alert("Errore nell'invio della mail: " + error.message);
+  }
+}
+
+async function sendPasswordReset() {
+  const email = document.getElementById('reset-email-input').value.trim();
+  if (!email) {
+    alert("Inserisci un'email valida.");
+    return;
+  }
+  try {
+    await auth.sendPasswordResetEmail(email);
+    alert(`📧 Mail inviata a: ${email}\n\nClicca sul link ricevuto per reimpostare la password oppure ignora la mail per mantenere la tua password attuale.`);
+    closeForgotPasswordModal();
   } catch (error) {
     alert("Errore: " + error.message);
   }
 }
 
-// --- AUTHENTICATION (LOGIN & REGISTRAZIONE) ---
+// --- AUTHENTICATION ---
 function toggleAuthMode(e) {
   e.preventDefault();
   isRegisterMode = !isRegisterMode;
@@ -469,21 +517,6 @@ function closeForgotPasswordModal() {
   document.getElementById('forgot-modal').style.display = 'none';
 }
 
-async function sendPasswordReset() {
-  const email = document.getElementById('reset-email-input').value.trim();
-  if (!email) {
-    alert("Inserisci un'email valida.");
-    return;
-  }
-  try {
-    await auth.sendPasswordResetEmail(email);
-    alert("📧 Link di ripristino inviato!");
-    closeForgotPasswordModal();
-  } catch (error) {
-    alert("Errore: " + error.message);
-  }
-}
-
 async function logout() {
   await auth.signOut();
   currentUserProfile = null;
@@ -550,20 +583,6 @@ function initTheme() {
     document.documentElement.setAttribute('data-theme', nextTheme);
     toggleBtn.textContent = nextTheme === 'dark' ? '☀️ Chiaro' : '🌙 Notturno';
   });
-}
-
-function sendChatMessage() {
-  const input = document.getElementById('chat-input-text');
-  const text = input.value.trim();
-  if (!text) return;
-
-  const box = document.getElementById('chat-messages-box');
-  const msg = document.createElement('div');
-  msg.style = 'margin-bottom: 6px; padding: 6px; background: var(--bg-primary); border-radius: 6px; font-size: 0.9rem;';
-  msg.innerHTML = `<strong>@${currentUserProfile.username}:</strong> ${text}`;
-  box.appendChild(msg);
-  box.scrollTop = box.scrollHeight;
-  input.value = '';
 }
 
 // LIBRERIA 3D (THREE.JS)
