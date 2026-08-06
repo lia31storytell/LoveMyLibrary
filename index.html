@@ -7,9 +7,13 @@
   <link rel="manifest" href="/manifest.json">
   <link rel="stylesheet" href="styles.css">
 
-  <!-- Librerie 3D e ePUB -->
+  <!-- Librerie 3D -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/epub.js/0.3.88/epub.min.js"></script>
+
+  <!-- LIBRERIE FIREBASE COMPATIBILI (FONDAMENTALI!) -->
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
 </head>
 <body>
 
@@ -23,49 +27,58 @@
     </div>
   </header>
 
-  <!-- SCHERMATA DI AUTENTICAZIONE (LOGIN / REGISTRAZIONE) -->
-  <div id="auth-screen" style="max-width: 450px; margin: 4rem auto; padding: 1rem;">
-    <div class="card" style="text-align: center;">
-      <h2 id="auth-title">🔐 Accedi a LoveMyLibrary</h2>
+  <!-- SCHERMATA DI AUTENTICAZIONE -->
+  <div id="auth-screen" style="max-width: 450px; margin: 3rem auto; padding: 1rem;">
+    <div class="card">
+      <h2 id="auth-title" style="text-align: center;">🔐 Accedi a LoveMyLibrary</h2>
       
       <form id="auth-form" onsubmit="handleAuth(event)">
-        <div style="margin-bottom: 1rem; text-align: left;">
-          <label>Username / Email</label>
-          <input type="text" id="auth-username" required placeholder="Inserisci il tuo username">
+        <div style="margin-bottom: 1rem;">
+          <label>Email *</label>
+          <input type="email" id="auth-email" required placeholder="tuamail@example.com">
         </div>
-        <div style="margin-bottom: 1rem; text-align: left;">
-          <label>Password</label>
+        
+        <div id="username-field-group" style="margin-bottom: 1rem; display: none;">
+          <label>Nickname Unico *</label>
+          <input type="text" id="auth-username" placeholder="Scegli un nickname">
+          <div id="nickname-suggestions" style="margin-top: 0.5rem; font-size: 0.85rem; color: var(--accent-pink);"></div>
+        </div>
+
+        <div style="margin-bottom: 1rem;">
+          <label>Password *</label>
           <input type="password" id="auth-password" required placeholder="••••••••">
         </div>
 
-        <button type="submit" id="auth-submit-btn" class="btn-pink" style="width: 100%; padding: 0.8rem; font-size: 1rem;">
+        <button type="submit" id="auth-submit-btn" class="btn-pink" style="width: 100%; padding: 0.8rem;">
           Accedi
         </button>
       </form>
 
-      <div style="margin-top: 1.5rem; font-size: 0.9rem;">
-        <span id="auth-toggle-text">Non hai un account?</span> 
-        <a href="#" id="auth-toggle-link" onclick="toggleAuthMode(event)" style="color: var(--accent-lilac); font-weight: bold; text-decoration: none;">Registrati qui</a>
+      <div style="margin-top: 1rem; display: flex; justify-content: space-between; font-size: 0.85rem;">
+        <a href="#" onclick="toggleAuthMode(event)" id="auth-toggle-link" style="color: var(--accent-lilac); font-weight: bold; text-decoration: none;">Non hai un account? Registrati</a>
+        <a href="#" onclick="showForgotPasswordModal(event)" style="color: var(--text-secondary); text-decoration: underline;">Password dimenticata?</a>
       </div>
     </div>
   </div>
 
-  <!-- CONTENUTO PRINCIPALE (VISIBILE SOLO DOPO IL LOGIN) -->
+  <!-- MODALE RECUPERO PASSWORD -->
+  <div id="forgot-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.7); z-index: 1000; justify-content: center; align-items: center;">
+    <div class="card" style="width: 90%; max-width: 400px; background: var(--bg-surface);">
+      <h3>🔑 Recupero Password</h3>
+      <p style="font-size: 0.9rem; color: var(--text-secondary);">Inserisci la tua email per ricevere il link di ripristino.</p>
+      <input type="email" id="reset-email-input" placeholder="La tua email..." style="margin-bottom: 1rem;">
+      <div style="display: flex; gap: 10px;">
+        <button class="btn-pink" style="flex: 1;" onclick="sendPasswordReset()">Invia Link</button>
+        <button class="btn-primary" onclick="closeForgotPasswordModal()">Annulla</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- CONTENUTO PRINCIPALE -->
   <main id="app-content" style="display: none; max-width: 1100px; margin: 1.5rem auto; padding: 0 1rem;">
     
-    <!-- 1. RICERCA GENERALE -->
     <section class="card">
-      <h2>🔍 Cerca Libri (Google Books) o Utenti</h2>
-      <div style="display: flex; gap: 10px;">
-        <input type="text" id="global-search-input" placeholder="Cerca titolo, autore, ISBN o username...">
-        <button class="btn-primary" onclick="handleGlobalSearch()">Cerca</button>
-      </div>
-      <div id="search-results-container" style="margin-top: 1rem;"></div>
-    </section>
-
-    <!-- 2. AGGIUNTA LIBRO -->
-    <section class="card">
-      <h2>➕ Aggiungi un Nuovo Libro</h2>
+      <h2>➕ Aggiungi un Libro alla Biblioteca Cloud</h2>
       <form id="add-book-form" onsubmit="submitNewBook(event)">
         <div class="form-grid">
           <div>
@@ -100,40 +113,31 @@
         </div>
 
         <div style="margin-top: 1rem;">
-          <label>URL Copertina (opzionale)</label>
-          <input type="text" id="book-cover-url" placeholder="https://link-immagine.jpg">
+          <label>URL Copertina</label>
+          <input type="text" id="book-cover-url" placeholder="https://link-copertina.jpg">
         </div>
 
         <button type="submit" class="btn-pink" style="width: 100%; margin-top: 1rem; padding: 0.8rem;">
-          🚀 Salva Libro nella Mia Libreria
+          🚀 Salva Libro
         </button>
       </form>
     </section>
 
-    <!-- 3. LIBRERIA 3D & LISTA LIBRI -->
     <section class="card">
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-        <h2>📚 La Tua Libreria 3D</h2>
+        <h2>📚 La Tua Libreria 3D Cloud</h2>
         <span id="books-count-badge" style="background: var(--accent-lilac); color: white; padding: 4px 12px; border-radius: 20px; font-weight: bold;">0 Libri</span>
       </div>
-      <p style="font-size: 0.9rem; color: var(--text-secondary);">
-        💡 Clicca su un libro nel 3D per selezionarlo e aprire la sua chat!
-      </p>
       
       <div id="canvas-3d-container"></div>
 
-      <!-- LISTA LIBRI SALVATI -->
       <h3 style="margin-top: 1.5rem;">📋 I Tuoi Libri Salvati:</h3>
-      <div id="my-books-list" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 1rem; margin-top: 1rem;">
-        <!-- I libri inseriti appariranno qui -->
-      </div>
+      <div id="my-books-list" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 1rem; margin-top: 1rem;"></div>
     </section>
 
-    <!-- 4. CHAT COMMUNITY -->
     <section class="card">
-      <h2 id="current-chat-title">💬 Chat Generale</h2>
-      <div id="chat-messages-box" style="height: 200px; border: 1px solid var(--border-color); overflow-y: auto; padding: 1rem; border-radius: 8px; margin-bottom: 1rem; background-color: var(--bg-surface);">
-      </div>
+      <h2 id="current-chat-title">💬 Chat Community Cloud</h2>
+      <div id="chat-messages-box" style="height: 200px; border: 1px solid var(--border-color); overflow-y: auto; padding: 1rem; border-radius: 8px; margin-bottom: 1rem; background-color: var(--bg-surface);"></div>
       <div style="display: flex; gap: 10px;">
         <input type="text" id="chat-input-text" placeholder="Scrivi un messaggio...">
         <button class="btn-primary" onclick="sendChatMessage()">Invia</button>
