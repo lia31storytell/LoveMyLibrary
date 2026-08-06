@@ -16,9 +16,6 @@
 </head>
 <body>
 
-  <!-- Contenitore reCAPTCHA invisibile per SMS -->
-  <div id="recaptcha-container"></div>
-
   <!-- HEADER E NAVBAR PRINCIPALE -->
   <header>
     <div class="logo">📚 LoveMyLibrary</div>
@@ -72,13 +69,13 @@
       
       <form id="auth-form" onsubmit="handleAuth(event)">
         
-        <!-- Campo unico per Login (Email o Nickname) -->
+        <!-- Campo per Login (Email o Nickname) o Nickname Registrazione -->
         <div style="margin-bottom: 1rem;">
           <label id="auth-identifier-label">Email o Nickname *</label>
-          <input type="text" id="auth-identifier" required placeholder="tuamail@example.com oppure il tuo nickname">
+          <input type="text" id="auth-identifier" required placeholder="tuamail@example.com oppure nickname">
         </div>
         
-        <!-- Campo separato per Email in caso di Registrazione -->
+        <!-- Campo Email visibile solo in Registrazione -->
         <div id="signup-email-group" style="margin-bottom: 1rem; display: none;">
           <label>Indirizzo Email *</label>
           <input type="email" id="auth-signup-email" placeholder="tuamail@example.com">
@@ -118,7 +115,7 @@
 
   <!-- MODALE GESTIONE ACCOUNT & PROFILO -->
   <div id="account-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.7); z-index: 2000; justify-content: center; align-items: center; padding: 1rem;">
-    <div class="card" style="width: 100%; max-width: 550px; background: var(--bg-surface); max-height: 90vh; overflow-y: auto;">
+    <div class="card" style="width: 100%; max-width: 500px; background: var(--bg-surface); max-height: 90vh; overflow-y: auto;">
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
         <h3>⚙️ Gestione Account & Sicurezza</h3>
         <button onclick="closeAccountModal()" style="background: none; border: none; font-size: 1.5rem; color: var(--text-primary); cursor: pointer;">✕</button>
@@ -150,29 +147,16 @@
 
       <!-- SEZIONE CAMBIO EMAIL -->
       <h4>✉️ Modifica Indirizzo Email</h4>
-      <div style="display: flex; gap: 8px; margin-bottom: 1rem;">
+      <div style="display: flex; gap: 8px; margin-bottom: 1.5rem;">
         <input type="email" id="new-email-input" placeholder="Nuova email...">
         <button class="btn-primary" onclick="requestEmailChange()">Aggiorna Mail</button>
       </div>
 
       <!-- SEZIONE RIPRISTINO PASSWORD -->
       <h4>🔒 Password</h4>
-      <button class="btn-primary" style="width: 100%; margin-bottom: 1.5rem;" onclick="sendPasswordResetFromAccount()">
+      <button class="btn-primary" style="width: 100%; margin-bottom: 0.5rem;" onclick="sendPasswordResetFromAccount()">
         📧 Invia Mail Reset Password
       </button>
-
-      <!-- SEZIONE VERIFICA SMS -->
-      <hr style="border: 0; border-top: 1px solid var(--border-color); margin: 1.5rem 0;">
-      <h4>📱 Verifica Telefono via SMS</h4>
-      <p style="font-size: 0.8rem; color: var(--text-secondary);">Inserisci il numero in formato internazionale (es. +393401234567)</p>
-      <div style="display: flex; gap: 8px; margin-bottom: 0.8rem;">
-        <input type="tel" id="phone-number-input" placeholder="+393401234567">
-        <button class="btn-pink" onclick="sendSMSCode()">Invia SMS</button>
-      </div>
-      <div style="display: flex; gap: 8px;">
-        <input type="text" id="sms-code-input" placeholder="Codice 6 cifre...">
-        <button class="btn-primary" onclick="confirmSMSCode()">Conferma Codice</button>
-      </div>
     </div>
   </div>
 

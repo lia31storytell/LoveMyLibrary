@@ -22,11 +22,6 @@ let dmUnsubscribe = null;
 // INIZIALIZZAZIONE
 window.addEventListener('DOMContentLoaded', () => {
   initTheme();
-  
-  // Recaptcha invisibile per Phone Auth
-  window.recaptchaVerifier = new firebase.auth.RecaptchaVerifier('recaptcha-container', {
-    'size': 'invisible'
-  });
 
   auth.onAuthStateChanged(async (user) => {
     if (user) {
@@ -76,7 +71,7 @@ async function handleAuth(e) {
       auth.useDeviceLanguage();
       await user.sendEmailVerification();
 
-      // Salva profilo con nickname sia normale che minuscolo (per il login)
+      // Salva profilo
       await db.collection('profiles').doc(user.uid).set({
         id: user.uid,
         username: username,
@@ -91,10 +86,10 @@ async function handleAuth(e) {
     }
 
   } else {
-    // LOGIN (Con Email o con Nickname)
+    // LOGIN (Con Email o Nickname)
     let emailToUse = identifier;
 
-    // Se l'utente ha inserito un Nickname invece dell'email (assenza della '@')
+    // Se l'utente ha inserito un Nickname invece dell'email (assenza di '@')
     if (!identifier.includes('@')) {
       try {
         const querySnapshot = await db.collection('profiles')
@@ -107,7 +102,7 @@ async function handleAuth(e) {
 
         emailToUse = querySnapshot.docs[0].data().email;
       } catch (err) {
-        alert("Errore durante il recupero del nickname: " + err.message);
+        alert("Errore durante la ricerca del nickname: " + err.message);
         return;
       }
     }
@@ -183,37 +178,10 @@ async function requestEmailChange() {
     auth.useDeviceLanguage();
     await user.verifyBeforeUpdateEmail(newEmail);
     
-    // Aggiorna anche il record su Firestore
     await db.collection('profiles').doc(user.uid).update({ email: newEmail });
     alert(`📩 Inviato link di conferma alla nuova email: ${newEmail}`);
   } catch (error) {
     alert("Errore aggiornamento email: " + error.message);
-  }
-}
-
-// 4. VERIFICA SMS (PHONE AUTH)
-async function sendSMSCode() {
-  const phoneNumber = document.getElementById('phone-number-input').value.trim();
-  if (!phoneNumber) return alert("Inserisci il numero con prefisso internazionale (+39...)");
-
-  try {
-    const confirmationResult = await auth.signInWithPhoneNumber(phoneNumber, window.recaptchaVerifier);
-    window.confirmationResult = confirmationResult;
-    alert("📲 SMS inviato! Inserisci il codice a 6 cifre.");
-  } catch (error) {
-    alert("Errore invio SMS: " + error.message);
-  }
-}
-
-async function confirmSMSCode() {
-  const code = document.getElementById('sms-code-input').value.trim();
-  if (!code || !window.confirmationResult) return alert("Fai prima clic su Invia SMS.");
-
-  try {
-    const result = await window.confirmationResult.confirm(code);
-    alert("✅ Numero di telefono verificato: " + result.user.phoneNumber);
-  } catch (error) {
-    alert("❌ Codice SMS errato: " + error.message);
   }
 }
 
