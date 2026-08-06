@@ -20,7 +20,11 @@ let userBooks = [];
 let library3DInstance = null;
 let selectedAvatarIcon = '👤';
 
-// --- INIZIALIZZAZIONE APPLICAZIONE ---
+// Variabili Gestione Chat Privata (DM)
+let activeDMUserId = null;
+let dmUnsubscribe = null;
+
+// --- INIZIALIZZAZIONE ---
 window.addEventListener('DOMContentLoaded', () => {
   initTheme();
   
@@ -37,6 +41,10 @@ async function fetchProfile(uid) {
   const doc = await db.collection('profiles').doc(uid).get();
   if (doc.exists) {
     currentUserProfile = doc.data();
+    
+    if (!currentUserProfile.followers) currentUserProfile.followers = [];
+    if (!currentUserProfile.following) currentUserProfile.following = [];
+
     showAppContent();
   } else {
     showAuthScreen();
@@ -58,12 +66,25 @@ function showAppContent() {
   document.getElementById('user-badge').textContent = `@${currentUserProfile.username}`;
   document.getElementById('dropdown-user-email').textContent = currentUserProfile.email;
 
+  updateFollowersStatsUI();
   updateHeaderUserBadge();
   loadUserBooks();
+  loadCommunityUsers();
+  loadPrivateChatUsers();
 
   if (!library3DInstance) {
     library3DInstance = new InteractiveLibrary3D('canvas-3d-container');
   }
+}
+
+function updateFollowersStatsUI() {
+  const followersCount = (currentUserProfile.followers || []).length;
+  const followingCount = (currentUserProfile.following || []).length;
+
+  document.getElementById('header-followers-count').textContent = followersCount;
+  document.getElementById('header-following-count').textContent = followingCount;
+  document.getElementById('modal-followers-count').textContent = followersCount;
+  document.getElementById('modal-following-count').textContent = followingCount;
 }
 
 // --- MENU DROPDOWN & NAVIGAZIONE ---
@@ -81,6 +102,193 @@ function scrollToSection(elementId) {
   const el = document.getElementById(elementId);
   if (el) el.scrollIntoView({ behavior: 'smooth' });
   document.getElementById('user-dropdown').classList.remove('show');
+}
+
+// --- SISTEMA MESSAGGI PRIVATI (DM) ---
+async function loadPrivateChatUsers() {
+  const container = document.getElementById('dm-users-list');
+  if (!container) return;
+
+  try {
+    const snapshot = await db.collection('profiles').limit(30).get();
+    let html = '';
+
+    snapshot.forEach(doc => {
+      const u = doc.data();
+      if (u.id !== currentUserProfile.id) {
+        const avatarDisplay = u.photoUrl 
+          ? `<img src="${u.photoUrl}" style="width:32px; height:32px; border-radius:50%; object-fit:cover;">`
+          : `<span style="font-size:1.2rem;">${u.avatarIcon || '👤'}</span>`;
+
+        html += `
+          <div class="dm-user-item" id="dm-user-item-${u.id}" onclick="openPrivateChatWith('${u.id}', '${u.username}')">
+            ${avatarDisplay}
+            <div>
+              <strong style="font-size:0.85rem;">@${u.username}</strong>
+            </div>
+          </div>
+        `;
+      }
+    });
+
+    container.innerHTML = html || '<p style="color:var(--text-secondary); padding:1rem;">Nessun utente trovato.</p>';
+  } catch (error) {
+    console.error("Errore caricamento contatti chat:", error);
+  }
+}
+
+function openPrivateChatWith(targetUserId, targetUsername) {
+  activeDMUserId = targetUserId;
+  
+  // Scorrimento alla sezione chat
+  scrollToSection('private-chat-section');
+
+  // Aggiorna evidenziazione utente attivo
+  document.querySelectorAll('.dm-user-item').forEach(item => item.classList.remove('active'));
+  const activeItem = document.getElementById(`dm-user-item-${targetUserId}`);
+  if (activeItem) activeItem.classList.add('active');
+
+  // Abilita input e bottone
+  document.getElementById('dm-input-text').disabled = false;
+  document.getElementById('dm-send-btn').disabled = false;
+  document.getElementById('dm-chat-header').innerHTML = `💬 Conversazione privata con <strong>@${targetUsername}</strong>`;
+
+  // Avvia l'ascolto dei messaggi in tempo reale
+  listenPrivateMessages(targetUserId);
+}
+
+function getChatDocId(uid1, uid2) {
+  return uid1 < uid2 ? `${uid1}_${uid2}` : `${uid2}_${uid1}`;
+}
+
+function listenPrivateMessages(targetUserId) {
+  if (dmUnsubscribe) dmUnsubscribe();
+
+  const chatId = getChatDocId(currentUserProfile.id, targetUserId);
+  const messagesBox = document.getElementById('dm-messages-container');
+
+  dmUnsubscribe = db.collection('direct_chats')
+    .doc(chatId)
+    .collection('messages')
+    .orderBy('timestamp', 'asc')
+    .onSnapshot(snapshot => {
+      messagesBox.innerHTML = '';
+      if (snapshot.empty) {
+        messagesBox.innerHTML = '<div style="text-align: center; color: var(--text-secondary); margin-top: 3rem;">Nessun messaggio. Inizia la conversazione!</div>';
+        return;
+      }
+
+      snapshot.forEach(doc => {
+        const m = doc.data();
+        const isMine = m.senderId === currentUserProfile.id;
+        const bubble = document.createElement('div');
+        bubble.className = `dm-message-bubble ${isMine ? 'mine' : 'other'}`;
+        bubble.textContent = m.text;
+        messagesBox.appendChild(bubble);
+      });
+
+      messagesBox.scrollTop = messagesBox.scrollHeight;
+    });
+}
+
+async function sendPrivateMessage() {
+  const input = document.getElementById('dm-input-text');
+  const text = input.value.trim();
+
+  if (!text || !activeDMUserId) return;
+
+  const chatId = getChatDocId(currentUserProfile.id, activeDMUserId);
+
+  try {
+    await db.collection('direct_chats').doc(chatId).collection('messages').add({
+      senderId: currentUserProfile.id,
+      receiverId: activeDMUserId,
+      text: text,
+      timestamp: firebase.firestore.FieldValue.serverTimestamp()
+    });
+
+    input.value = '';
+  } catch (error) {
+    alert("Errore invio messaggio: " + error.message);
+  }
+}
+
+// --- SISTEMA DI FOLLOW / UNFOLLOW ---
+async function toggleFollowUser(targetUserId) {
+  if (!currentUserProfile) return;
+
+  const targetDocRef = db.collection('profiles').doc(targetUserId);
+  const myDocRef = db.collection('profiles').doc(currentUserProfile.id);
+
+  const isFollowing = currentUserProfile.following.includes(targetUserId);
+
+  try {
+    if (isFollowing) {
+      currentUserProfile.following = currentUserProfile.following.filter(id => id !== targetUserId);
+      await myDocRef.update({
+        following: firebase.firestore.FieldValue.arrayRemove(targetUserId)
+      });
+      await targetDocRef.update({
+        followers: firebase.firestore.FieldValue.arrayRemove(currentUserProfile.id)
+      });
+    } else {
+      currentUserProfile.following.push(targetUserId);
+      await myDocRef.update({
+        following: firebase.firestore.FieldValue.arrayUnion(targetUserId)
+      });
+      await targetDocRef.update({
+        followers: firebase.firestore.FieldValue.arrayUnion(currentUserProfile.id)
+      });
+    }
+
+    updateFollowersStatsUI();
+    loadCommunityUsers();
+  } catch (error) {
+    alert("Errore durante l'azione di Follow: " + error.message);
+  }
+}
+
+// --- CARICAMENTO COMMUNITY ---
+async function loadCommunityUsers() {
+  const container = document.getElementById('users-community-list');
+  if (!container) return;
+
+  try {
+    const snapshot = await db.collection('profiles').limit(20).get();
+    let html = '';
+
+    snapshot.forEach(doc => {
+      const u = doc.data();
+      if (u.id !== currentUserProfile.id) {
+        const isFollowing = (currentUserProfile.following || []).includes(u.id);
+        const avatarDisplay = u.photoUrl 
+          ? `<img src="${u.photoUrl}" style="width:100%; height:100%; object-fit:cover;">`
+          : (u.avatarIcon || '👤');
+
+        const followerCount = (u.followers || []).length;
+
+        html += `
+          <div class="user-card">
+            <div class="user-card-avatar">${avatarDisplay}</div>
+            <strong style="font-size: 0.95rem;">@${u.username}</strong>
+            <small style="color: var(--text-secondary); margin-bottom: 0.4rem;">${u.favoriteGenre || 'Lettore'} • ${followerCount} follower</small>
+            
+            <button class="btn-follow ${isFollowing ? 'following' : ''}" onclick="toggleFollowUser('${u.id}')">
+              ${isFollowing ? '✓ Segui già' : '+ Segui'}
+            </button>
+
+            <button class="btn-primary" style="width:100%; margin-top:0.4rem; font-size:0.8rem; padding: 4px;" onclick="openPrivateChatWith('${u.id}', '${u.username}')">
+              💬 Messaggio Privato
+            </button>
+          </div>
+        `;
+      }
+    });
+
+    container.innerHTML = html || '<p style="color:var(--text-secondary);">Nessun altro utente trovato.</p>';
+  } catch (error) {
+    console.error("Errore caricamento community:", error);
+  }
 }
 
 // --- GESTIONE ACCOUNT & AVATAR ---
@@ -162,7 +370,7 @@ async function saveProfileChanges(e) {
     alert("✅ Profilo aggiornato con successo!");
     closeAccountModal();
   } catch (error) {
-    alert("Errore durante il salvataggio: " + error.message);
+    alert("Errore salvataggio: " + error.message);
   }
 }
 
@@ -214,6 +422,8 @@ async function handleAuth(e) {
         username: username,
         email: email,
         avatarIcon: '📚',
+        followers: [],
+        following: [],
         createdAt: firebase.firestore.FieldValue.serverTimestamp()
       });
 
